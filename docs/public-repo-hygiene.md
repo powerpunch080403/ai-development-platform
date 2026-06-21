@@ -17,3 +17,5 @@
 `.env.example`에는 비밀이 아닌 placeholder만 기록하고 실제 값은 넣지 않는다. 작업 전 `git status --short`와 staged diff를 확인한다.
 
 Runtime data는 source repository가 아니라 App-managed Local Runtime의 app data directory에 저장한다.
+
+Dependency resolution을 재현하기 위한 `apps/server/uv.lock`과 루트 `pnpm-lock.yaml`은 commit 대상이다. `.venv`, `node_modules`와 generated `dist`는 commit하지 않는다.

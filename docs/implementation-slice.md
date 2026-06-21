@@ -17,4 +17,4 @@ Mock과 Manual Adapter는 실제 외부 CLI integration 전에 상태 머신과 
 
 Remote Test Runner는 MVP에 포함하지만 Local Worker path 이후 구현한다. 작은 게임 제작은 첫 구현 대상이 아니라 Personal Alpha의 Golden Path 3 검증 시나리오다.
 
-현재 repository는 skeleton 단계이며 위 기능을 아직 구현하지 않았다.
+현재 repository는 bootstrap validation 단계다. FastAPI dependency 설치, health test와 실제 HTTP 응답, pnpm workspace 설치, Vite dev/build와 shared package build까지 검증했다. 위의 Local Worker 기능은 아직 구현하지 않았다.
