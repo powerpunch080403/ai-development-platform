@@ -1,0 +1,12 @@
+$ErrorActionPreference = "Stop"
+
+Write-Host "AI Development Platform monorepo skeleton"
+Write-Host "No integrated development launcher is implemented yet."
+Write-Host ""
+Write-Host "Server hint:"
+Write-Host "  uv sync --project apps/server"
+Write-Host "  uv run --project apps/server fastapi dev apps/server/src/aidp_server/main.py"
+Write-Host ""
+Write-Host "Web hint:"
+Write-Host "  pnpm install"
+Write-Host "  pnpm web:dev"

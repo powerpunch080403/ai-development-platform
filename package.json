@@ -1,0 +1,11 @@
+{
+  "name": "ai-development-platform",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "web:dev": "pnpm -C apps/web dev",
+    "web:build": "pnpm -C apps/web build",
+    "contracts:build": "pnpm -C packages/shared-contracts build",
+    "adapters:build": "pnpm -C packages/cli-adapters build"
+  }
+}

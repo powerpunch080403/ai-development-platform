@@ -1,0 +1,40 @@
+[project]
+name = "aidp-server"
+version = "0.0.0"
+description = "App-managed Local Runtime server skeleton"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "alembic",
+  "fastapi",
+  "pydantic-settings",
+  "sqlalchemy>=2",
+  "uvicorn[standard]",
+]
+
+[dependency-groups]
+dev = [
+  "httpx",
+  "mypy",
+  "pytest",
+  "ruff",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aidp_server"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
