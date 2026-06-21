@@ -4,14 +4,16 @@ from aidp_server.config import Settings, ensure_app_data_dir
 
 
 def test_default_app_data_directory_is_runtime_data() -> None:
-    settings = Settings(_env_file=None)
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.app_data_dir == Path("./runtime-data")
 
 
 def test_app_data_directory_and_default_database_url_use_configured_path(tmp_path: Path) -> None:
     app_data_dir = tmp_path / "app-data"
-    settings = Settings(_env_file=None, app_data_dir=app_data_dir, database_url=None)
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None, app_data_dir=app_data_dir, database_url=None
+    )
 
     created_path = ensure_app_data_dir(settings)
 

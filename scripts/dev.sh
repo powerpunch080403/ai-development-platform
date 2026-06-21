@@ -11,6 +11,7 @@ echo
 echo "Server (terminal 1):"
 echo "  uv sync --project apps/server"
 echo "  uv run --project apps/server alembic upgrade head"
+echo "  uv run --project apps/server python -m aidp_server.cli auth pairing-code"
 echo "  uv run --project apps/server uvicorn aidp_server.main:app --reload --host 127.0.0.1 --port 8000"
 echo
 echo "Web (terminal 2):"

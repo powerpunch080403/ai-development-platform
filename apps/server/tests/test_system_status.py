@@ -10,7 +10,7 @@ def test_system_status_reports_reachable_database_without_exposing_full_path(
     tmp_path: Path,
 ) -> None:
     settings = Settings(
-        _env_file=None,
+        _env_file=None,  # type: ignore[call-arg]
         env="test",
         app_data_dir=tmp_path / "app-data",
         database_url=None,

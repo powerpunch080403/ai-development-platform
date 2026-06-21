@@ -17,6 +17,6 @@ Mock과 Manual Adapter는 실제 외부 CLI integration 전에 상태 머신과 
 
 Remote Test Runner는 MVP에 포함하지만 Local Worker path 이후 구현한다. 작은 게임 제작은 첫 구현 대상이 아니라 Personal Alpha의 Golden Path 3 검증 시나리오다.
 
-현재 repository는 SQLite migration baseline 단계다. FastAPI bootstrap 검증에 이어 App Data Directory, SQLAlchemy engine/session, `local_users`, `devices`, `sessions`, `pairing_codes` migration과 system status 진단을 구현했다.
+현재 repository는 Local User Bootstrap + Web UI Pairing Session 단계다. FastAPI/SQLite baseline 위에 `Local Owner` bootstrap, CLI 전용 일회용 pairing code, Web UI device와 HttpOnly cookie session, 인증 상태·logout·device/session 조회 및 폐기를 구현했다.
 
-이 Slice는 schema와 연결 기반만 제공한다. local user 자동 생성, pairing code 발급·검증, Session login/logout과 이후 Local Worker 기능은 아직 구현하지 않았다.
+이 Slice는 local identity와 Web UI session 경계까지만 제공한다. 중앙 account 연결, OAuth, sync, Project/Conversation/Tool/Task/Worker, CLI Adapter, Remote Test Runner와 Desktop packaging은 아직 구현하지 않았다.

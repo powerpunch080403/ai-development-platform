@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     app_data_dir: Path = Path("./runtime-data")
     database_url: str | None = None
     web_origin: str = "http://localhost:5173"
+    session_cookie_name: str = "aidp_session"
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        return self.env.lower() == "production"
 
     @property
     def app_data_dir_path(self) -> Path:
