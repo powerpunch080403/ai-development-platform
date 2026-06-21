@@ -18,4 +18,6 @@
 
 Runtime data는 source repository가 아니라 App-managed Local Runtime의 app data directory에 저장한다.
 
+기본 `runtime-data/`와 그 아래 SQLite 파일은 local-only 상태다. Migration 검증이나 server 실행으로 DB가 생성되어도 Git status에 나타나면 안 된다. Migration source와 `uv.lock`만 commit한다.
+
 Dependency resolution을 재현하기 위한 `apps/server/uv.lock`과 루트 `pnpm-lock.yaml`은 commit 대상이다. `.venv`, `node_modules`와 generated `dist`는 commit하지 않는다.

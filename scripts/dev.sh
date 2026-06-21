@@ -10,6 +10,7 @@ if command -v pnpm >/dev/null 2>&1; then pnpm --version; else echo "pnpm: not av
 echo
 echo "Server (terminal 1):"
 echo "  uv sync --project apps/server"
+echo "  uv run --project apps/server alembic upgrade head"
 echo "  uv run --project apps/server uvicorn aidp_server.main:app --reload --host 127.0.0.1 --port 8000"
 echo
 echo "Web (terminal 2):"

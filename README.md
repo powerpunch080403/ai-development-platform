@@ -13,7 +13,7 @@
 - Mock/Manual Adapter는 개발, pipeline 검증과 복구를 위한 fallback이다.
 - Remote Test Runner는 MVP에 포함하지만 Local Worker Golden Path와 목표 CLI Adapter 통합 이후 구현한다.
 
-현재 저장소는 **bootstrap validation 단계**다. Windows에서 server dependency 설치, pytest, 실제 `/health` 요청, pnpm workspace 설치, Vite dev server와 production build를 검증했다. Local Worker, pairing/session, CLI Adapter와 Remote Test Runner의 실제 기능은 아직 구현하지 않았다.
+현재 저장소는 **SQLite migration baseline 단계**다. App Data Directory, Local Runtime SQLite engine/session, 초기 identity migration과 `/system/status` 진단 endpoint를 포함한다. 실제 pairing/session 동작, Local Worker, CLI Adapter와 Remote Test Runner는 아직 구현하지 않았다.
 
 ## Monorepo 구조
 
@@ -47,6 +47,7 @@ Windows에서 명령이 보이지 않으면 새 PowerShell을 열어 사용자 P
 
 ```powershell
 uv sync --project apps/server
+uv run --project apps/server alembic upgrade head
 uv run --project apps/server pytest
 uv run --project apps/server uvicorn aidp_server.main:app --reload --host 127.0.0.1 --port 8000
 
@@ -65,6 +66,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 ```bash
 uv sync --project apps/server
+uv run --project apps/server alembic upgrade head
 uv run --project apps/server pytest
 uv run --project apps/server uvicorn aidp_server.main:app --reload --host 127.0.0.1 --port 8000
 
@@ -78,3 +80,9 @@ curl http://127.0.0.1:8000/health
 ```
 
 Workspace 전체 TypeScript package build는 `pnpm -r build`로 검증한다. 통합 개발 launcher는 아직 구현하지 않았으며 `scripts/dev.ps1`과 `scripts/dev.sh`는 도구 버전과 실행 명령을 안내한다.
+
+## Local Runtime data
+
+기본 App Data Directory는 `./runtime-data`이며 기본 SQLite 파일은 그 아래 `aidev.sqlite3`다. `AIDP_APP_DATA_DIR`과 선택적 `AIDP_DATABASE_URL`로 바꿀 수 있다. Database schema는 Alembic migration으로 관리한다.
+
+`runtime-data/`, SQLite DB, `.env`, token과 credential은 source repository에 commit하지 않는다. 현재 migration은 schema만 만들며 local user 생성, pairing code 발급과 Session login/logout은 구현하지 않는다.

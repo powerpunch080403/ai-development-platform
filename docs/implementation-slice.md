@@ -17,4 +17,6 @@ Mock과 Manual Adapter는 실제 외부 CLI integration 전에 상태 머신과 
 
 Remote Test Runner는 MVP에 포함하지만 Local Worker path 이후 구현한다. 작은 게임 제작은 첫 구현 대상이 아니라 Personal Alpha의 Golden Path 3 검증 시나리오다.
 
-현재 repository는 bootstrap validation 단계다. FastAPI dependency 설치, health test와 실제 HTTP 응답, pnpm workspace 설치, Vite dev/build와 shared package build까지 검증했다. 위의 Local Worker 기능은 아직 구현하지 않았다.
+현재 repository는 SQLite migration baseline 단계다. FastAPI bootstrap 검증에 이어 App Data Directory, SQLAlchemy engine/session, `local_users`, `devices`, `sessions`, `pairing_codes` migration과 system status 진단을 구현했다.
+
+이 Slice는 schema와 연결 기반만 제공한다. local user 자동 생성, pairing code 발급·검증, Session login/logout과 이후 Local Worker 기능은 아직 구현하지 않았다.
