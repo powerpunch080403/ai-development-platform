@@ -3,7 +3,14 @@ from aidp_server.db.base import Base
 
 
 def test_identity_tables_are_registered_in_metadata() -> None:
-    assert {"local_users", "devices", "sessions", "pairing_codes"}.issubset(Base.metadata.tables)
+    assert {
+        "local_users",
+        "devices",
+        "sessions",
+        "pairing_codes",
+        "projects",
+        "project_repositories",
+    }.issubset(Base.metadata.tables)
 
 
 def test_only_hash_columns_exist_for_pairing_codes_and_sessions() -> None:

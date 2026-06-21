@@ -1,4 +1,12 @@
-import type { AuthState, HealthStatus } from "@aidp/shared-contracts";
+import type {
+  AuthState,
+  CreateProjectRequest,
+  GitRepositoryStatusDto,
+  HealthStatus,
+  ProjectDto,
+  ProjectRepositoryDto,
+  RegisterRepositoryRequest,
+} from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 const API_BASE_URL = import.meta.env.VITE_AIDP_API_BASE_URL ?? DEFAULT_API_BASE_URL;
@@ -11,7 +19,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(response.status === 401 ? "Not authenticated" : "Request failed");
+    const body = (await response.json().catch(() => null)) as
+      | { detail?: string | { message?: string } }
+      | null;
+    const detail = typeof body?.detail === "string" ? body.detail : body?.detail?.message;
+    throw new Error(detail ?? (response.status === 401 ? "Not authenticated" : "Request failed"));
   }
   return (await response.json()) as T;
 }
@@ -41,4 +53,32 @@ export function pair(code: string, deviceName: string): Promise<AuthState> {
 
 export function logout(): Promise<{ status: string }> {
   return request<{ status: string }>("/auth/logout", { method: "POST" });
+}
+
+export function listProjects(): Promise<ProjectDto[]> {
+  return request<ProjectDto[]>("/projects");
+}
+
+export function createProject(input: CreateProjectRequest): Promise<ProjectDto> {
+  return request<ProjectDto>("/projects", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function listRepositories(projectId: string): Promise<ProjectRepositoryDto[]> {
+  return request<ProjectRepositoryDto[]>(`/projects/${projectId}/repositories`);
+}
+
+export function registerRepository(
+  projectId: string,
+  input: RegisterRepositoryRequest,
+): Promise<ProjectRepositoryDto> {
+  return request<ProjectRepositoryDto>(`/projects/${projectId}/repositories`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function refreshRepositoryStatus(repositoryId: string): Promise<GitRepositoryStatusDto> {
+  return request<GitRepositoryStatusDto>(`/repositories/${repositoryId}/refresh-status`, {
+    method: "POST",
+  });
 }

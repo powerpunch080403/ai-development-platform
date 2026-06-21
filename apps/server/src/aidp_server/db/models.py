@@ -2,7 +2,17 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from aidp_server.db.base import Base
@@ -38,6 +48,24 @@ class PairingPurpose(StrEnum):
     WORKER_NODE = "worker_node"
     TEST_RUNNER_NODE = "test_runner_node"
     RECOVERY = "recovery"
+
+
+class ProjectStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class RepositoryRole(StrEnum):
+    PRIMARY = "primary"
+    SUPPORTING = "supporting"
+    DOCS = "docs"
+    INFRA = "infra"
+    UNKNOWN = "unknown"
+
+
+class VcsType(StrEnum):
+    GIT = "git"
+    UNKNOWN = "unknown"
 
 
 class TimestampMixin:
@@ -132,3 +160,79 @@ class PairingCode(TimestampMixin, Base):
     created_by_device_id: Mapped[str | None] = mapped_column(
         ForeignKey("devices.id"), nullable=True
     )
+
+
+class Project(TimestampMixin, Base):
+    __tablename__ = "projects"
+    __table_args__ = (Index("ix_projects_local_user_id", "local_user_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[ProjectStatus] = mapped_column(
+        Enum(
+            ProjectStatus,
+            native_enum=False,
+            create_constraint=True,
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        ),
+        default=ProjectStatus.ACTIVE,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ProjectRepository(TimestampMixin, Base):
+    __tablename__ = "project_repositories"
+    __table_args__ = (
+        Index("ix_project_repositories_project_id", "project_id"),
+        Index("ix_project_repositories_local_user_id", "local_user_id"),
+        Index(
+            "uq_project_repositories_one_primary",
+            "project_id",
+            unique=True,
+            sqlite_where=text("repository_role = 'primary' AND archived_at IS NULL"),
+        ),
+        UniqueConstraint("project_id", "repository_path", name="uq_project_repository_path"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    repository_path: Mapped[str] = mapped_column(Text, nullable=False)
+    repository_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    repository_role: Mapped[RepositoryRole] = mapped_column(
+        Enum(
+            RepositoryRole,
+            native_enum=False,
+            create_constraint=True,
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        ),
+        default=RepositoryRole.UNKNOWN,
+        nullable=False,
+    )
+    vcs_type: Mapped[VcsType] = mapped_column(
+        Enum(
+            VcsType,
+            native_enum=False,
+            create_constraint=True,
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        ),
+        default=VcsType.GIT,
+        nullable=False,
+    )
+    default_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    current_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_commit_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_status_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

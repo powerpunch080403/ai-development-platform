@@ -18,8 +18,12 @@
 
 Runtime data는 source repository가 아니라 App-managed Local Runtime의 app data directory에 저장한다.
 
+등록한 repository absolute path와 Git status metadata도 local runtime data다. 사용자 repository를 이 source repository 아래로 복사하지 않고, DB나 status 출력물을 fixture 또는 문서에 commit하지 않는다. Automated test의 Git commit은 시스템 임시 디렉터리의 test repository에서만 만든다.
+
 Pairing code와 session token 원문은 secret runtime data다. Pairing code는 CLI에 한 번만 표시하고 두 값 모두 DB에는 hash만 저장한다. API response, application log, test fixture와 문서 예시에 실제 값을 남기지 않는다. Web UI는 session token을 localStorage 또는 JavaScript 상태로 복사하지 않는다.
 
 기본 `runtime-data/`와 그 아래 SQLite 파일은 local-only 상태다. Migration 검증이나 server 실행으로 DB가 생성되어도 Git status에 나타나면 안 된다. Migration source와 `uv.lock`만 commit한다.
 
 Dependency resolution을 재현하기 위한 `apps/server/uv.lock`과 루트 `pnpm-lock.yaml`은 commit 대상이다. `.venv`, `node_modules`와 generated `dist`는 commit하지 않는다.
+
+Repository status 기능은 Git read-only 명령만 실행한다. 실제 사용자 repository에서 fetch, branch, commit, worktree, stash, reset 또는 merge를 자동 실행하지 않는다.

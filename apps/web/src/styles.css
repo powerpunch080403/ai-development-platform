@@ -19,7 +19,7 @@ body {
 }
 
 .app-shell {
-  width: min(42rem, calc(100% - 3rem));
+  width: min(62rem, calc(100% - 3rem));
   padding: 3rem;
   border: 1px solid #334155;
   border-radius: 1rem;
@@ -55,16 +55,28 @@ h1 {
 .connected { color: #86efac; }
 
 label { display: grid; gap: 0.4rem; color: #cbd5e1; }
-input, button {
+input, select, button {
   padding: 0.75rem 0.9rem;
   border: 1px solid #475569;
   border-radius: 0.5rem;
   font: inherit;
 }
-input { color: #f8fafc; background: #0f172a; }
+input, select { color: #f8fafc; background: #0f172a; }
 button { cursor: pointer; color: #0f172a; background: #93c5fd; font-weight: 700; }
 .error { margin: 0; color: #fca5a5; }
 dl { display: grid; gap: 0.75rem; margin: 0; }
 dl div { display: grid; grid-template-columns: 6rem 1fr; gap: 1rem; }
 dt { color: #94a3b8; }
 dd { margin: 0; overflow-wrap: anywhere; }
+
+h2 { margin: 0; font-size: 1.15rem; }
+.workspace { display: grid; gap: 1.25rem; margin-top: 2rem; }
+.session-bar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.nested-form { display: grid; gap: 1rem; padding-top: 1rem; border-top: 1px solid #334155; }
+.repository-list { display: grid; gap: 1rem; }
+.repository-card { display: grid; gap: 0.8rem; padding: 1rem; border: 1px solid #334155; border-radius: 0.75rem; background: #172033; }
+.repository-card code { color: #bfdbfe; overflow-wrap: anywhere; }
+.badge { margin-left: 0.5rem; padding: 0.15rem 0.45rem; border-radius: 999px; background: #334155; font-size: 0.8rem; }
+.secondary { color: #e2e8f0; background: #334155; }
+.clean { color: #86efac; }
+.dirty { color: #fbbf24; font-weight: 700; }

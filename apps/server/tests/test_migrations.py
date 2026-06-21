@@ -34,6 +34,8 @@ def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(
             "devices",
             "sessions",
             "pairing_codes",
+            "projects",
+            "project_repositories",
         }.issubset(table_names)
 
         command.downgrade(alembic_config, "base")

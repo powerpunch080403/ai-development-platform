@@ -2,7 +2,7 @@
 
 App-managed Local Runtime의 FastAPI server skeleton이다.
 
-현재 구현은 `GET /health`, `GET /system/status`, App Data Directory와 SQLite/Alembic baseline, local user bootstrap과 Web UI pairing session을 제공한다. Project, Task와 Worker는 아직 구현하지 않았다. `python -m aidp_server.main`은 application object를 import하고 종료할 뿐 개발 server를 실행하지 않으므로 uvicorn을 사용한다.
+현재 구현은 SQLite/Alembic baseline, local authentication, Project/ProjectRepository 등록과 Git read-only status를 제공한다. Conversation, Task와 Worker는 아직 구현하지 않았다. `python -m aidp_server.main`은 개발 server를 실행하지 않으므로 uvicorn을 사용한다.
 
 ## Windows PowerShell
 
@@ -70,3 +70,16 @@ curl http://127.0.0.1:8000/system/status
 - `POST /sessions/{id}/revoke`, `POST /devices/{id}/revoke`: session 또는 device 폐기
 
 Device 폐기는 해당 device의 활성 session도 함께 폐기한다. 개발 환경 cookie는 HTTP localhost에서 동작하며 production 환경에서는 Secure cookie가 설정되므로 HTTPS가 필요하다.
+
+## Project와 repository API
+
+모든 endpoint는 인증된 local session을 요구하고 현재 local user 범위로 제한한다.
+
+- `POST /projects`, `GET /projects`, `GET /projects/{id}`
+- `POST /projects/{id}/repositories`, `GET /projects/{id}/repositories`
+- `GET /repositories/{id}/status`: DB에 저장된 마지막 status
+- `POST /repositories/{id}/refresh-status`: 실제 Git status를 읽어 DB 갱신
+
+등록 경로는 실제 Git root의 normalized absolute path로 저장한다. 같은 Project의 같은 root와 두 번째 활성 `primary`는 `409`로 거절한다. Role 미지정 시 첫 repository는 `primary`, 이후 repository는 `unknown`이다.
+
+Git 확인은 argument array, `shell=False`, timeout을 사용해 `rev-parse`, `status --porcelain`, `branch --show-current`, `rev-parse HEAD`와 local ref만 읽는다. Remote fetch와 Git write operation은 없다. Dirty에는 staged, unstaged와 untracked file이 모두 포함되며 dirty 상태도 등록과 분석은 허용한다.

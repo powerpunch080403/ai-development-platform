@@ -5,6 +5,7 @@ from aidp_server.auth import router as auth_router
 from aidp_server.config import get_settings
 from aidp_server.devices import router as devices_router
 from aidp_server.health import router as health_router
+from aidp_server.projects import router as projects_router
 from aidp_server.system import router as system_router
 
 
@@ -22,6 +23,7 @@ def create_app() -> FastAPI:
     app.include_router(system_router)
     app.include_router(auth_router)
     app.include_router(devices_router)
+    app.include_router(projects_router)
     return app
 
 

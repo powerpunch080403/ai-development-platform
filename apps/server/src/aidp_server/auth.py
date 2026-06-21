@@ -133,7 +133,9 @@ def get_current_auth(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
     runtime_session.last_seen_at = now
-    runtime_session.idle_expires_at = min(now + SESSION_IDLE_TTL, _as_utc(runtime_session.absolute_expires_at))
+    runtime_session.idle_expires_at = min(
+        now + SESSION_IDLE_TTL, _as_utc(runtime_session.absolute_expires_at)
+    )
     device.last_seen_at = now
     session.commit()
     return AuthContext(user=user, device=device, runtime_session=runtime_session)

@@ -2,7 +2,7 @@
 
 Desktop App Shell에서 재사용할 수 있는 React/TypeScript/Vite Web UI skeleton이다.
 
-현재는 Local Runtime session 확인, pairing form, 연결된 local owner/device/session 표시와 logout을 포함한다. Owner chat와 Task UI는 아직 구현하지 않았다. Session token은 JavaScript나 localStorage에 저장하지 않고 server가 설정한 HttpOnly cookie만 사용한다.
+현재는 pairing/session 위에 Project 생성·선택, Git repository 경로와 role 등록, branch/commit/dirty 상태 표시와 refresh를 포함한다. Owner chat와 Task UI는 아직 구현하지 않았다. Session token은 JavaScript나 localStorage에 저장하지 않고 HttpOnly cookie만 사용한다.
 
 ## Windows PowerShell
 
@@ -31,3 +31,5 @@ pnpm -C apps/web dev
 API 기본 주소는 `http://localhost:8000`이다. 변경할 때는 `apps/web/.env.example`을 복사한 local `.env`에서 `VITE_AIDP_API_BASE_URL`을 설정한다. 실제 `.env`는 commit하지 않는다.
 
 pnpm 11의 dependency build 보안 정책에 따라 Vite가 요구하는 `esbuild`만 `pnpm-workspace.yaml`의 `allowBuilds`에서 허용한다. 다른 dependency build script는 검토 없이 추가하지 않는다.
+
+File picker는 아직 없으므로 repository의 local path를 직접 입력한다. 첫 repository에서 role을 Automatic으로 두면 `primary`, 이후에는 `unknown`으로 등록된다. Dirty 표시는 변경을 자동 수정·stash·commit하지 않으며 Refresh status는 read-only 조회만 수행한다.
