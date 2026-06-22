@@ -5,6 +5,8 @@ Desktop App Shell에서 재사용할 수 있는 React/TypeScript/Vite Web UI ske
 Attempt에서 Worktree 생성, path/branch/base 표시, status/diff 조회, manual result commit과 artifact text 조회를 제공한다. 파일 편집기는 없으며 사용자가 표시된 worktree path에서 직접 수정한다. 기본 branch merge는 하지 않는다.
 Review-ready 목록, diff와 merge 조건, approve/reject/prepare/squash 버튼을 제공한다. Squash는 명시적 approve 이후 local base branch에만 수행한다.
 
+현재 UI는 AI Worker를 실행하지 않는다. Create Worktree 후 표시된 경로를 사용자가 직접 편집하고 Commit result로 제출한다. 전체 수동 절차는 `docs/golden-path-readme.md`에 있다.
+
 ## Windows PowerShell
 
 ```powershell

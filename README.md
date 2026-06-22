@@ -15,6 +15,22 @@
 
 현재 저장소는 **Owner Review + 사용자 승인 Squash Merge baseline 단계**다. Committed Attempt의 diff와 artifact를 검토하고 명시적으로 승인한 뒤, clean·non-stale source branch에 하나의 squash commit으로 반영한다.
 
+README 수정 Golden Path 전체 흐름은 [docs/golden-path-readme.md](docs/golden-path-readme.md)와 pytest E2E로 검증한다.
+
+현재 가능한 것:
+
+- Local Runtime과 Web UI pairing/session
+- Project/Repository 등록과 Git dirty 확인
+- Work Item/Task/Attempt/Worker claim
+- 격리 Worktree와 Manual result commit
+- Owner review와 사용자 승인 기반 local squash merge
+
+아직 불가능한 것:
+
+- 실제 AI Worker 및 Codex/Antigravity CLI Adapter
+- Remote Test Runner와 Worktree 자동 cleanup
+- 전체 Approval Policy/Owner Grant, Team Mode와 Desktop App Shell
+
 ## Monorepo 구조
 
 ```text

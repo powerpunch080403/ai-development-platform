@@ -20,4 +20,5 @@ echo "  pnpm -C apps/web dev"
 echo
 echo "Checks:"
 echo "  uv run --project apps/server pytest"
+echo "  uv run --project apps/server pytest tests/test_golden_path_readme_e2e.py"
 echo "  pnpm -r build"
