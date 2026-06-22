@@ -353,63 +353,41 @@ def worktree_diff(
     return DiffView(diff=text[:MAX_DIFF], truncated=len(text) > MAX_DIFF)
 
 
-@router.post("/worktrees/{wid}/commit-result", response_model=WorktreeView)
-def commit_result(
-    wid: str,
-    request: CommitRequest,
-    current: CurrentAuth,
-    session: Annotated[Session, Depends(get_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> WorktreeView:
-    w = owned(session, GitWorktree, wid, current.user.id)
+def apply_worktree_result(
+    session: Session,
+    settings: Settings,
+    w: GitWorktree,
+    commit_message: str,
+    user_id: str,
+    worker_message: str = "Manual worker result committed",
+) -> None:
     a = session.get(TaskAttempt, w.task_attempt_id)
     task = session.get(Task, w.task_id)
     if not a or not task or not a.claimed_by_worker_id:
-        raise HTTPException(status_code=409, detail="Attempt is not claimed")
+        raise ValueError("Attempt is not claimed")
     path = Path(w.worktree_path)
     status_text = command(path, "status", "--porcelain").rstrip()
     if not status_text:
-        raise HTTPException(status_code=409, detail="Worktree has no changes")
+        raise ValueError("Worktree has no changes")
     command(path, "add", "-A")
     diff = command(path, "diff", "--cached", "--binary")
     create_text_artifact(
-        session,
-        settings,
-        content=diff,
-        kind=ArtifactKind.DIFF_PATCH,
-        user_id=current.user.id,
-        project_id=w.project_id,
-        repository_id=w.repository_id,
-        task_id=w.task_id,
-        attempt_id=w.task_attempt_id,
-        worker_id=w.worker_id,
+        session, settings, content=diff, kind=ArtifactKind.DIFF_PATCH,
+        user_id=user_id, project_id=w.project_id, repository_id=w.repository_id,
+        task_id=w.task_id, attempt_id=w.task_attempt_id, worker_id=w.worker_id,
     )
     create_text_artifact(
-        session,
-        settings,
-        content=status_text,
-        kind=ArtifactKind.GIT_STATUS,
-        user_id=current.user.id,
-        project_id=w.project_id,
-        repository_id=w.repository_id,
-        task_id=w.task_id,
-        attempt_id=w.task_attempt_id,
-        worker_id=w.worker_id,
+        session, settings, content=status_text, kind=ArtifactKind.GIT_STATUS,
+        user_id=user_id, project_id=w.project_id, repository_id=w.repository_id,
+        task_id=w.task_id, attempt_id=w.task_attempt_id, worker_id=w.worker_id,
     )
-    command(path, "commit", "-m", request.commit_message)
+    command(path, "commit", "-m", commit_message)
     sha = command(path, "rev-parse", "HEAD").strip()
     log = command(path, "show", "--stat", "--oneline", "--no-renames", sha)
     create_text_artifact(
-        session,
-        settings,
-        content=log,
-        kind=ArtifactKind.COMMIT_LOG,
-        user_id=current.user.id,
-        project_id=w.project_id,
-        repository_id=w.repository_id,
-        task_id=w.task_id,
-        attempt_id=w.task_attempt_id,
-        worker_id=w.worker_id,
+        session, settings, content=log, kind=ArtifactKind.COMMIT_LOG,
+        user_id=user_id, project_id=w.project_id, repository_id=w.repository_id,
+        task_id=w.task_id, attempt_id=w.task_attempt_id, worker_id=w.worker_id,
     )
     now = datetime.now(timezone.utc)
     w.result_commit_sha = sha
@@ -421,12 +399,27 @@ def commit_result(
     record_audit_event(
         session,
         event_type="worktree.result_committed",
-        message="Manual worker result committed",
-        local_user_id=current.user.id,
+        message=worker_message,
+        local_user_id=user_id,
         project_id=w.project_id,
         repository_id=w.repository_id,
         metadata={"worktree_id": w.id, "commit": sha},
     )
+
+
+@router.post("/worktrees/{wid}/commit-result", response_model=WorktreeView)
+def commit_result(
+    wid: str,
+    request: CommitRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> WorktreeView:
+    w = owned(session, GitWorktree, wid, current.user.id)
+    try:
+        apply_worktree_result(session, settings, w, request.commit_message, current.user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     session.commit()
     return view(w)
 

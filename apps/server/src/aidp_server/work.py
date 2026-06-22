@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
@@ -159,6 +159,38 @@ class WorkerView(BaseModel):
     last_seen_at: datetime | None
     registered_at: datetime
     revoked_at: datetime | None
+
+
+class RunMockWorkerRequest(BaseModel):
+    commit_message: str | None = None
+
+
+class WorkerRunView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    local_user_id: str
+    project_id: str
+    repository_id: str | None
+    task_id: str
+    task_attempt_id: str
+    worker_id: str
+    adapter_kind: str
+    status: str
+    started_at: datetime | None
+    completed_at: datetime | None
+    failed_at: datetime | None
+    cancelled_at: datetime | None
+    summary: str | None
+    error_code: str | None
+    error_message: str | None
+    updated_at: datetime
+
+
+class RunMockWorkerResponse(BaseModel):
+    worker_run: WorkerRunView
+    artifact_id: str | None = None
+    status: str
 
 
 router = APIRouter(tags=["work, tasks, and workers"])
@@ -522,6 +554,37 @@ def update_attempt(
     )
     session.commit()
     return attempt_view(a)
+
+
+@router.post("/task-attempts/{attempt_id}/run-mock-worker", response_model=RunMockWorkerResponse)
+def execute_mock_worker(
+    attempt_id: str,
+    request: RunMockWorkerRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> RunMockWorkerResponse:
+    from aidp_server.adapters.mock_worker import run_mock_worker
+    attempt = owned(session, TaskAttempt, attempt_id, current.user.id)
+    
+    audit(
+        session,
+        current,
+        "worker.run_mock",
+        "Mock worker run initiated",
+        project_id=attempt.project_id,
+        repository_id=attempt.repository_id,
+        metadata={"task_attempt_id": attempt.id},
+    )
+    
+    worker_run, artifact = run_mock_worker(session, attempt, request.commit_message)
+    session.commit()
+    session.refresh(worker_run)
+    
+    return RunMockWorkerResponse(
+        worker_run=worker_run,
+        artifact_id=artifact.id if artifact else None,
+        status="success" if worker_run.status == "succeeded" else "failed"
+    )
 
 
 @router.post("/workers", response_model=WorkerView, status_code=201)

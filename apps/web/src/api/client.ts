@@ -16,6 +16,7 @@ import type {
   WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto, CreateWorkItemRequest, CreateTaskRequest, RegisterWorkerRequest,
   GitWorktreeDto,WorktreeStatusDto,WorktreeDiffDto,ArtifactRefDto,
   AttemptReviewDto,PrepareSquashMergeResponse,
+  RunMockWorkerRequest, RunMockWorkerResponse,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -112,6 +113,7 @@ export function heartbeatWorker(id:string):Promise<WorkerDto>{return request<Wor
 export function revokeWorker(id:string):Promise<WorkerDto>{return request<WorkerDto>(`/workers/${id}/revoke`,{method:"POST"})}
 export function claimAttempt(workerId:string,attemptId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/workers/${workerId}/claim`,{method:"POST",body:JSON.stringify({task_attempt_id:attemptId})})}
 export function releaseAttempt(workerId:string,attemptId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/workers/${workerId}/release`,{method:"POST",body:JSON.stringify({task_attempt_id:attemptId,next_status:"created"})})}
+export function runMockWorker(attemptId:string, input:RunMockWorkerRequest):Promise<RunMockWorkerResponse>{return request<RunMockWorkerResponse>(`/task-attempts/${attemptId}/run-mock-worker`,{method:"POST",body:JSON.stringify(input)})}
 export function createWorktree(attemptId:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/task-attempts/${attemptId}/worktree`,{method:"POST"})}
 export function getWorktree(attemptId:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/task-attempts/${attemptId}/worktree`)}
 export function getWorktreeStatus(id:string):Promise<WorktreeStatusDto>{return request<WorktreeStatusDto>(`/worktrees/${id}/status`)}

@@ -751,6 +751,36 @@ class TaskAttempt(TimestampMixin, Base):
     )
 
 
+class WorkerRun(TimestampMixin, Base):
+    __tablename__ = "worker_runs"
+    __table_args__ = (
+        Index("ix_worker_runs_task_id", "task_id"),
+        Index("ix_worker_runs_attempt_id", "task_attempt_id"),
+        Index("ix_worker_runs_worker_id", "worker_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    repository_id: Mapped[str | None] = mapped_column(ForeignKey("project_repositories.id"))
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), nullable=False)
+    task_attempt_id: Mapped[str] = mapped_column(ForeignKey("task_attempts.id"), nullable=False)
+    worker_id: Mapped[str] = mapped_column(ForeignKey("workers.id"), nullable=False)
+    adapter_kind: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[RecordStatus] = mapped_column(
+        enum_column(RecordStatus), nullable=False, default=RecordStatus.CREATED
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
 class GitWorktree(TimestampMixin, Base):
     __tablename__ = "git_worktrees"
     __table_args__ = (
