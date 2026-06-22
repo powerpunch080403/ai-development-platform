@@ -706,6 +706,7 @@ class Task(TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    write_scope_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(
         enum_column(TaskStatus), nullable=False, default=TaskStatus.DRAFT
     )

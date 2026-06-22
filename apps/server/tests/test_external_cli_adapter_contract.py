@@ -138,6 +138,7 @@ def test_external_cli_context_package(app_harness: AppHarness, tmp_path: Path) -
         "Do not read or write .env or secret files unless explicitly allowed later.",
         "Produce a concise worker report.",
         "Leave review, approval, and squash merge to Owner.",
+        "Only modify files within the declared write_scope.",
     ]
 
 

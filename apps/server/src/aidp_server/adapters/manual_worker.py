@@ -9,6 +9,8 @@ from aidp_server.config import get_settings, Settings
 from aidp_server.db.models import GitWorktreeStatus, TaskAttemptStatus, TaskStatus
 from aidp_server.db.models import utc_now
 from aidp_server.auth import CurrentAuth
+from aidp_server.write_scope import normalize_write_scope
+import json
 
 def start_manual_worker(
     session: Session, 
@@ -66,7 +68,8 @@ def start_manual_worker(
         f"Attempt: {attempt.id}",
         f"Worktree: {worktree.worktree_path}",
         f"Branch: {worktree.branch_name}",
-        f"Instructions: {task.instructions}"
+        f"Instructions: {task.instructions}",
+        f"Allowed write scope: {json.dumps(normalize_write_scope(task.write_scope_json), ensure_ascii=False)}",
     ]
     if notes:
         log_lines.append(f"Notes: {notes}")

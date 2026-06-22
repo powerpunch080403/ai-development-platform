@@ -22,6 +22,11 @@ from aidp_server.db.models import (
 )
 from aidp_server.db.session import get_session
 from aidp_server.git_utils import inspect_git_repository, run_git_write
+from aidp_server.write_scope import (
+    WriteScopeError,
+    parse_porcelain_v1_z,
+    validate_changed_paths,
+)
 
 
 class WorktreeView(BaseModel):
@@ -369,6 +374,8 @@ def apply_worktree_result(
     status_text = command(path, "status", "--porcelain").rstrip()
     if not status_text:
         raise ValueError("Worktree has no changes")
+    porcelain_z = command(path, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+    validate_changed_paths(parse_porcelain_v1_z(porcelain_z), task.write_scope_json)
     command(path, "add", "-A")
     diff = command(path, "diff", "--cached", "--binary")
     create_text_artifact(
@@ -418,6 +425,8 @@ def commit_result(
     w = owned(session, GitWorktree, wid, current.user.id)
     try:
         apply_worktree_result(session, settings, w, request.commit_message, current.user.id)
+    except WriteScopeError as error:
+        raise HTTPException(status_code=409, detail=error.detail())
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     session.commit()

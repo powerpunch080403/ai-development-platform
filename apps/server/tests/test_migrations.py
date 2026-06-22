@@ -24,7 +24,9 @@ def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(
         command.upgrade(alembic_config, "head")
         engine = create_engine(database_url)
         try:
-            table_names = set(inspect(engine).get_table_names())
+            inspector = inspect(engine)
+            table_names = set(inspector.get_table_names())
+            task_columns = {column["name"] for column in inspector.get_columns("tasks")}
         finally:
             engine.dispose()
 
@@ -51,6 +53,7 @@ def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(
             "artifact_refs",
             "merge_reviews",
         }.issubset(table_names)
+        assert "write_scope_json" in task_columns
 
         command.downgrade(alembic_config, "base")
     finally:

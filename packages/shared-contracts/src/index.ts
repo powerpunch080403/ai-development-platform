@@ -96,14 +96,15 @@ export type AppendMessageRequest = { role: "user" | "assistant" | "system"; cont
 export type CreateAgentRunRequest = { conversation_id?: string; project_id?: string; purpose: string; input_message_id?: string };
 export type CreateToolCallRequest = { tool_name: string; tool_version?: string; idempotency_key?: string; arguments_json: Record<string, unknown> };
 export type WorkItemDto = { id:string; project_id:string; parent_work_item_id:string|null; title:string; description:string|null; work_item_type:string; status:string; priority:number|null };
-export type TaskDto = { id:string; project_id:string; repository_id:string|null; work_item_id:string|null; title:string; instructions:string; status:string; risk_level:string; requested_worker_kind:string|null };
+export type WriteScopeDto = { mode:"paths"; paths:string[]; allow_new_files:boolean };
+export type TaskDto = { id:string; project_id:string; repository_id:string|null; work_item_id:string|null; title:string; instructions:string; write_scope:WriteScopeDto; status:string; risk_level:string; requested_worker_kind:string|null };
 export type TaskAttemptDto = { id:string; task_id:string; project_id:string; repository_id:string|null; claimed_by_worker_id:string|null; status:string; attempt_number:number; lease_expires_at:string|null; result_summary:string|null };
 export type WorkerDto = { id:string; display_name:string; worker_kind:string; status:string; capabilities:Record<string,unknown>|null; last_seen_at:string|null; registered_at:string; revoked_at:string|null };
 export type WorkerRunDto = { id:string; local_user_id:string; project_id:string; repository_id:string|null; task_id:string; task_attempt_id:string; worker_id:string; adapter_kind:string; status:string; started_at:string|null; completed_at:string|null; failed_at:string|null; cancelled_at:string|null; summary:string|null; error_code:string|null; error_message:string|null; updated_at:string };
 export type RunMockWorkerRequest = { commit_message?:string };
 export type RunMockWorkerResponse = { worker_run:WorkerRunDto; artifact_id?:string; status:string };
 export type CreateWorkItemRequest = { title:string; description?:string; parent_work_item_id?:string; work_item_type:string; priority?:number };
-export type CreateTaskRequest = { title:string; instructions:string; repository_id?:string; work_item_id?:string; risk_level:string; requested_worker_kind?:string };
+export type CreateTaskRequest = { title:string; instructions:string; write_scope?:WriteScopeDto; repository_id?:string; work_item_id?:string; risk_level:string; requested_worker_kind?:string };
 export type RegisterWorkerRequest = { display_name:string; worker_kind:string; capabilities?:Record<string,unknown> };
 export type GitWorktreeDto={id:string;task_attempt_id:string;worktree_path:string;branch_name:string;base_branch:string|null;base_commit_sha:string|null;result_commit_sha:string|null;status:string;cleanup_at:string|null};
 export type WorktreeStatusDto={is_dirty:boolean;porcelain:string;status:string};
@@ -182,6 +183,7 @@ export type ExternalCliContextPackageDto = {
   base_commit_sha: string;
   task_title: string;
   task_instructions: string;
+  write_scope: WriteScopeDto;
   constraints: string[];
   allowed_working_directory: string;
   forbidden_actions: string[];

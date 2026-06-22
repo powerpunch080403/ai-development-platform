@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from aidp_server.artifacts import create_text_artifact
 from aidp_server.config import Settings
 from aidp_server.db.models import ArtifactKind, ArtifactRef, GitWorktree, Task, TaskAttempt
+from aidp_server.write_scope import normalize_write_scope
 
 EXTERNAL_CLI_CONSTRAINTS = [
     "Only operate inside the assigned worktree path.",
@@ -19,6 +20,7 @@ EXTERNAL_CLI_CONSTRAINTS = [
     "Do not read or write .env or secret files unless explicitly allowed later.",
     "Produce a concise worker report.",
     "Leave review, approval, and squash merge to Owner.",
+    "Only modify files within the declared write_scope.",
 ]
 
 
@@ -50,6 +52,7 @@ def build_external_cli_context_package(
         "base_commit_sha": worktree.base_commit_sha,
         "task_title": task.title,
         "task_instructions": task.instructions,
+        "write_scope": normalize_write_scope(task.write_scope_json),
         "constraints": EXTERNAL_CLI_CONSTRAINTS,
         "allowed_working_directory": worktree.worktree_path,
         "forbidden_actions": [

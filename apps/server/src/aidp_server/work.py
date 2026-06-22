@@ -32,6 +32,7 @@ from aidp_server.state_transitions import (
     assert_public_task_attempt_transition,
     assert_public_task_transition,
 )
+from aidp_server.write_scope import WriteScopeError, normalize_write_scope
 
 LEASE_TTL = timedelta(minutes=5)
 RELEASE_STATUSES = {
@@ -76,6 +77,7 @@ class CreateTaskRequest(BaseModel):
     agent_run_id: str | None = None
     title: str = Field(min_length=1, max_length=300)
     instructions: str = Field(min_length=1, max_length=100_000)
+    write_scope: dict[str, Any] | None = None
     risk_level: RiskLevel = RiskLevel.R1
     requested_worker_kind: WorkerKind | None = None
 
@@ -133,6 +135,7 @@ class TaskView(BaseModel):
     work_item_id: str | None
     title: str
     instructions: str
+    write_scope: dict[str, Any]
     status: str
     risk_level: str
     requested_worker_kind: str | None
@@ -265,6 +268,7 @@ def task_view(v: Task) -> TaskView:
         work_item_id=v.work_item_id,
         title=v.title,
         instructions=v.instructions,
+        write_scope=normalize_write_scope(v.write_scope_json),
         status=v.status.value,
         risk_level=v.risk_level.value,
         requested_worker_kind=v.requested_worker_kind.value if v.requested_worker_kind else None,
@@ -420,6 +424,10 @@ def create_task(
     session: Annotated[Session, Depends(get_session)],
 ) -> TaskView:
     owned(session, Project, project_id, current.user.id)
+    try:
+        write_scope = normalize_write_scope(request.write_scope)
+    except WriteScopeError as error:
+        raise HTTPException(status_code=422, detail=error.detail())
     for model, oid in (
         (ProjectRepository, request.repository_id),
         (WorkItem, request.work_item_id),
@@ -442,6 +450,7 @@ def create_task(
         created_by_session_id=current.runtime_session.id,
         title=request.title,
         instructions=request.instructions,
+        write_scope_json=write_scope,
         status=TaskStatus.DRAFT,
         risk_level=request.risk_level,
         requested_worker_kind=request.requested_worker_kind,

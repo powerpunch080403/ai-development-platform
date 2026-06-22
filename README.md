@@ -36,6 +36,7 @@
 - Process Runner Baseline (향후 CLI Adapter 연동용 안전한 프로세스 실행)
 - External CLI Adapter Contract Baseline (Dry-Run 검증)
 - Server-enforced Task/TaskAttempt state transition guards
+- Task write-scope and pre-commit changed-path validation
 
 ### Not implemented yet
 

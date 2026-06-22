@@ -6,6 +6,11 @@ from aidp_server.artifacts import create_text_artifact
 from aidp_server.config import get_settings
 from aidp_server.db.models import GitWorktreeStatus, TaskAttemptStatus, TaskStatus
 from aidp_server.db.models import utc_now
+from aidp_server.write_scope import (
+    ChangedPath,
+    normalize_write_scope,
+    validate_changed_paths,
+)
 
 def run_mock_worker(session: Session, attempt: TaskAttempt, commit_message: str | None = None) -> tuple[WorkerRun, ArtifactRef | None]:
     task = session.get(Task, attempt.task_id)
@@ -72,6 +77,11 @@ def run_mock_worker(session: Session, attempt: TaskAttempt, commit_message: str 
         
         if not str(resolved_target).startswith(str(resolved_wt)):
             raise ValueError("Target path resolves outside the worktree")
+
+        validate_changed_paths(
+            [ChangedPath(path=rel_path, status="??" if not resolved_target.exists() else " M", is_new_file=not resolved_target.exists())],
+            normalize_write_scope(task.write_scope_json),
+        )
 
         log_lines.append(f"Action: append_to_file")
         log_lines.append(f"Path: {rel_path}")

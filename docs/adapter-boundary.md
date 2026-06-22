@@ -36,3 +36,7 @@
 - Dry-run은 서버에서 지정한 안전한 고정 명령어만 실행하며, 레포지토리 파일이나 브랜치를 변경하지 않는다.
 - `TaskAttempt` 및 Worker/Process Run 간의 연결, Context Package 아티팩트의 생성 및 저장이 검증되었다.
 - 실제 동작(파일 변경, 결과 Commit 생성 등)은 Dry-run 범위를 벗어나며, 후속 단계에서 다루게 된다.
+
+## Write scope boundary
+
+Task는 repository root 기준 상대 경로 allowlist인 `write_scope`를 가진다. 기본값 `.`은 전체 worktree를 허용한다. Mock, Manual과 향후 External CLI Adapter의 결과는 commit 전에 staged, unstaged, untracked 경로를 모두 검사하며 scope 밖 변경이나 허용되지 않은 새 파일이 있으면 결과 commit을 만들지 않는다. 이 검증은 실제 AI CLI Adapter 연결 전 필수 안전장치다.

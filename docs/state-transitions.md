@@ -41,3 +41,5 @@ available -> claimed -> available
 ```
 
 실패, 취소, 재시도와 review rejection 전이도 서버 transition map에 명시되어 있다. 내부 application service는 Worker claim, result commit, review와 merge에 필요한 보호 상태 전이를 소유하며 public generic endpoint는 이를 대신하지 않는다.
+
+Result commit 전에는 Task의 `write_scope`에 대해 모든 변경 경로를 검증한다. 위반 시 Worktree는 commit 상태로, TaskAttempt는 `committed`로, Task는 `waiting_for_review`로 전이하지 않는다.

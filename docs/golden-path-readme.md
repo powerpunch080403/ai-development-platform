@@ -1,5 +1,7 @@
 # README Edit Golden Path
 
+README 변경 Task는 `write_scope.paths = ["README.md"]`처럼 허용 범위를 좁힐 수 있다. 결과 commit 전에 Git changed path를 검증하므로 다른 파일 변경은 commit 및 review-ready 전이를 차단한다. `write_scope`를 생략하면 기존 호환 기본값 `.`을 사용한다.
+
 이 문서는 Local Worker Golden Path의 현재 검증 범위를 설명한다. 현재 MVP는 실제 AI Worker를 실행하지 않으며, 다음 3가지 방법으로 파이프라인을 검증한다.
 
 ## A. Manual Worker Golden Path
