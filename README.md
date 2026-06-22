@@ -13,25 +13,39 @@
 - Mock/Manual Adapter는 개발, pipeline 검증과 복구를 위한 fallback이다.
 - Remote Test Runner는 MVP에 포함하지만 Local Worker Golden Path와 목표 CLI Adapter 통합 이후 구현한다.
 
-현재 저장소는 **Owner Review + 사용자 승인 Squash Merge baseline 단계**다. Committed Attempt의 diff와 artifact를 검토하고 명시적으로 승인한 뒤, clean·non-stale source branch에 하나의 squash commit으로 반영한다.
+현재 저장소는 MVP 완제품이 아니라 **Local Worker execution pipeline baseline** 단계다.
 
-README 수정 Golden Path 전체 흐름은 [docs/golden-path-readme.md](docs/golden-path-readme.md)와 pytest E2E로 검증한다.
+### Current MVP capabilities
 
 현재 가능한 것:
+- Local Runtime server
+- Web UI pairing/session
+- Project and repository registration
+- Git dirty status checks
+- Conversation / Agent Run / Tool Call records
+- Work Item / Task / Task Attempt
+- Worker claim / lease / heartbeat
+- Mock Worker Adapter (Golden path E2E 테스트용)
+- Manual Worker Adapter (Web UI 기반 수동 편집)
+- Git worktree result commits
+- ArtifactRef storage
+- Owner review
+- Local approval request baseline
+- User-approved squash merge
+- Safe worktree cleanup
 
-- Local Runtime과 Web UI pairing/session
-- Project/Repository 등록과 Git dirty 확인
-- Worker registry / claim / lease / heartbeat
-- 격리 Git Worktree 생성 및 관리
-- **Manual Worker Adapter** (Web UI 기반의 Start / Submit 흐름)
-- **Mock Worker Adapter** (Golden path E2E 테스트용)
-- Owner review와 사용자 승인 기반 local squash merge
+### Not implemented yet
 
 아직 불가능한 것:
-
-- 실제 AI Worker 및 Codex/Antigravity CLI Adapter
+- Real Codex CLI Owner Adapter
+- Real Antigravity CLI Worker Adapter
+- External AI process execution
 - Remote Test Runner
-- 전체 Approval Policy/Owner Grant, Team Mode와 Desktop App Shell
+- Desktop App Shell
+- Team Mode / Central Authority
+- Full Owner Grant / Autonomy Profile
+- Long-term memory
+- Multi-device sync
 
 ## Monorepo 구조
 
@@ -99,7 +113,37 @@ pnpm web:dev
 curl http://127.0.0.1:8000/health
 ```
 
-Workspace 전체 TypeScript package build는 `pnpm -r build`로 검증한다. 통합 개발 launcher는 아직 구현하지 않았으며 `scripts/dev.ps1`과 `scripts/dev.sh`는 도구 버전과 실행 명령을 안내한다.
+## 테스트 및 검증 명령
+
+모든 작업 전후에는 다음 표준 검증 명령을 실행하여 회귀를 방지한다.
+
+Server 검증:
+```powershell
+cd C:\Users\user2\Desktop\Projects\ai-development-platform\apps\server
+uv sync
+uv run alembic upgrade head
+uv run alembic check
+uv run pytest
+```
+
+개별 E2E/Adapter 테스트:
+```powershell
+cd apps/server
+uv run pytest tests/test_golden_path_readme_e2e.py
+uv run pytest tests/test_mock_worker_adapter.py
+uv run pytest tests/test_manual_worker_adapter.py
+uv run pytest tests/test_policy_approvals.py
+```
+
+전체 Build 검증 (루트 디렉토리):
+```powershell
+cd C:\Users\user2\Desktop\Projects\ai-development-platform
+pnpm -r build
+git status --short
+git rev-parse HEAD
+```
+
+통합 개발 launcher는 아직 구현하지 않았으며 `scripts/dev.ps1`과 `scripts/dev.sh`는 도구 버전과 실행 명령을 안내한다.
 
 ## Local Runtime data
 

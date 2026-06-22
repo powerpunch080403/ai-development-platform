@@ -21,6 +21,8 @@ def start_manual_worker(
     if not task:
         raise ValueError("Task not found")
 
+    if not attempt.claimed_by_worker_id:
+        raise ValueError("Attempt is not claimed")
     worker = session.get(Worker, attempt.claimed_by_worker_id)
     if not worker or worker.worker_kind != "manual":
         raise ValueError("Attempt is not claimed by a manual worker")
@@ -94,6 +96,8 @@ def submit_manual_worker(
     commit_message: str | None = None, 
     result_summary: str | None = None
 ) -> tuple[WorkerRun, ArtifactRef | None, str | None]:
+    if not attempt.claimed_by_worker_id:
+        raise ValueError("Attempt is not claimed")
     worker = session.get(Worker, attempt.claimed_by_worker_id)
     if not worker or worker.worker_kind != "manual":
         raise ValueError("Attempt is not claimed by a manual worker")
