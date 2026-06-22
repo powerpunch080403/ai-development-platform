@@ -17,7 +17,7 @@
 
 ### Current MVP capabilities
 
-현재 가능한 것:
+현재 가능한 것 (Local Worker MVP baseline):
 - Local Runtime server
 - Web UI pairing/session
 - Project and repository registration
@@ -43,7 +43,19 @@
 - External CLI Active Run Guard (TaskAttempt execution concurrency control)
 - Remote Process Runner with Env Allowlist
 - External CLI Contract (Dry Run)
-- Experimental Antigravity CLI Adapter (Fake Shim default, Real `agy` opt-in for Controlled README test)
+- Experimental Antigravity CLI Adapter (Real AGY Worker Alpha)
+
+**Real AGY Worker Alpha Baseline Status**:
+- Real AGY Worker Alpha exists but is strictly **opt-in**.
+- Real AGY execution is skipped by default in tests.
+- AGY execution currently supports **controlled enum modes only** (`controlled_readme_test`, `controlled_scope_violation_test`, `controlled_timeout_test`).
+- Free-form prompt is intentionally **not exposed**.
+- `--dangerously-skip-permissions` remains **disabled by default**.
+- AGY runs **only in assigned git worktrees**; source `main`/`default` branch is protected until Owner review/approval/squash merge.
+- Validated E2E Coverage:
+  - **Success Path**: execution → review → approval → squash merge
+  - **Write Scope Violation Path**: detected → failed, no result commit
+  - **Timeout/Process Failure Path**: detected → failed/timed_out, no result commit
 
 ### Not implemented yet
 
