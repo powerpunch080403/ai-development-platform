@@ -116,7 +116,7 @@ def test_mock_worker_adapter_e2e(app_harness: AppHarness, tmp_path: Path) -> Non
     app_harness.client.post(f"/task-attempts/{attempt['id']}/merge/prepare")
     app_harness.client.post(
         f"/task-attempts/{attempt['id']}/merge/squash",
-        json={"commit_message": "docs: mock worker test"}
+        json={}
     ).json()
     # Verify source repository HEAD is now updated
     merged_sha = git(source, "rev-parse", "HEAD").stdout.strip()

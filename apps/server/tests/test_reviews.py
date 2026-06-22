@@ -41,7 +41,7 @@ def test_review_prepare_approve_and_squash(app_harness: AppHarness, tmp_path: Pa
     )
     assert app_harness.client.post(f"/task-attempts/{aid}/merge/prepare").status_code == 200
     merged = app_harness.client.post(
-        f"/task-attempts/{aid}/merge/squash", json={"commit_message": "chore: squash result"}
+        f"/task-attempts/{aid}/merge/squash", json={}
     )
     assert merged.status_code == 200
     sha = merged.json()["merge_commit_sha"]

@@ -39,6 +39,7 @@
 - Task write-scope and pre-commit changed-path validation
 - Unified Action Policy Catalog (Action risk level & tool registry sync)
 - Policy Decision enforcement on major side-effect APIs
+- Approval Fingerprint Arguments Hash (Execution arguments validation)
 
 ### Not implemented yet
 

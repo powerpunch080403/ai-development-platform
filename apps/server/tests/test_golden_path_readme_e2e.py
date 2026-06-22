@@ -128,7 +128,7 @@ def test_readme_edit_golden_path_end_to_end(app_harness: AppHarness, tmp_path: P
     assert prepared.status_code == 200 and prepared.json()["merge_possible"] is True
     merged = app_harness.client.post(
         f"/task-attempts/{attempt['id']}/merge/squash",
-        json={"commit_message": "docs: validate README Golden Path"},
+        json={},
     ).json()
     merge_sha = merged["merge_commit_sha"]
     assert merge_sha

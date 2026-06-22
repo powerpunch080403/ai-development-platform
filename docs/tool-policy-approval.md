@@ -16,7 +16,7 @@
 
 ## Approval Fingerprint 구성
 
-Approval Request의 검증을 위해 12가지 필드를 포함하는 SHA-256 fingerprint가 사용된다:
+Approval Request의 검증을 위해 다음 필드를 포함하는 SHA-256 fingerprint가 사용된다:
 - `action_type`
 - `local_user_id`
 - `project_id`
@@ -29,9 +29,12 @@ Approval Request의 검증을 위해 12가지 필드를 포함하는 SHA-256 fin
 - `result_branch`
 - `result_commit_sha`
 - `risk_level`
+- `arguments_hash` (Normalized execution arguments hash)
+
+*참고: Raw secrets나 raw arguments는 보안상 fingerprint나 DB에 그대로 저장되지 않으며 canonical hash 형태로만 묶인다.*
 
 ## Stale Approval 조건
 
-Approval Request 승인 이후, `base_commit_sha` 또는 `result_commit_sha`가 변경되면 해당 Approval은 유효하지 않은 것으로 취급되어 `stale` 상태로 변환된다. Squash Merge 등 실행 시 Fingerprint가 현재 컨텍스트와 일치하는 유효한 `pending/approved` 상태여야만 한다.
+Approval Request 승인 이후, `base_commit_sha` 또는 `result_commit_sha`가 변경되거나 `commit_message` 등 실행 arguments가 변경되어 `arguments_hash`가 달라지면 해당 Approval은 유효하지 않은 것으로 취급되어 `stale` 상태로 변환된다. Squash Merge 등 실행 시 Fingerprint가 현재 컨텍스트 및 실행 인자와 일치하는 유효한 `pending/approved` 상태여야만 한다.
 
 *(전체 Owner Grant, Autonomy Profile, Team Approval Group 등의 복잡한 인가 시스템은 MVP 이후 후속 과제이다.)*

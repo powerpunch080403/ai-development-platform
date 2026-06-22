@@ -95,3 +95,35 @@ def test_stale_fingerprint_blocks_merge(app_harness: AppHarness, tmp_path: Path)
     with app_harness.session_factory() as s:
         reqs = s.query(ApprovalRequest).filter_by(task_attempt_id=aid).all()
         assert any(r.status.value == "stale" for r in reqs)
+
+
+def test_squash_with_changed_commit_message_marks_stale(app_harness: AppHarness, tmp_path: Path) -> None:
+    auth(app_harness)
+    source, wt, aid, task_id = committed(app_harness, tmp_path, "pol_msg_stale")
+    
+    # Approve
+    app_harness.client.post(
+        f"/task-attempts/{aid}/review/approve", json={"review_summary": "LGTM"}
+    )
+    
+    # Try to squash with different message
+    resp = app_harness.client.post(
+        f"/task-attempts/{aid}/merge/squash", json={"commit_message": "Different message"}
+    )
+    assert resp.status_code == 409
+    assert "stale" in resp.json()["detail"].lower()
+    
+    with app_harness.session_factory() as s:
+        reqs = s.query(ApprovalRequest).filter_by(task_attempt_id=aid).all()
+        assert any(r.status.value == "stale" for r in reqs)
+
+
+def test_arguments_hash_is_deterministic() -> None:
+    from aidp_server.approvals import build_approval_arguments_hash
+    hash1 = build_approval_arguments_hash("test", {"a": 1, "b": 2})
+    hash2 = build_approval_arguments_hash("test", {"b": 2, "a": 1})
+    assert hash1 == hash2
+    assert hash1 is not None
+
+    hash3 = build_approval_arguments_hash("test", None)
+    assert hash3 is None

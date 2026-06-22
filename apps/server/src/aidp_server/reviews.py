@@ -28,12 +28,17 @@ from aidp_server.git_utils import inspect_git_repository, run_git_write
 from aidp_server.policy import evaluate_action, create_policy_decision
 from aidp_server.approvals import (
     build_approval_fingerprint,
+    build_approval_arguments_hash,
     create_approval_request,
     approve_request,
     reject_request,
     find_valid_approval_for_merge,
     mark_stale_if_fingerprint_changed,
 )
+
+
+def get_default_commit_message(task: Task, attempt: TaskAttempt) -> str:
+    return f"{task.title}\n\nSquash merge result from task attempt {attempt.id}."
 
 
 class SummaryRequest(BaseModel):
@@ -136,10 +141,12 @@ def detail(
         select(MergeReview).where(MergeReview.task_attempt_id == a.id).order_by(MergeReview.created_at.desc())
     )
     
+    commit_message = get_default_commit_message(task, a)
+    arguments_hash = build_approval_arguments_hash("merge.perform_squash", {"commit_message": commit_message, "merge_strategy": "squash"})
     fp = build_approval_fingerprint(
         "merge.perform_squash", current.user.id, a.project_id, w.repository_id,
         a.task_id, a.id, w.id, w.base_branch, current_head or w.base_commit_sha,
-        w.branch_name, w.result_commit_sha, "R3"
+        w.branch_name, w.result_commit_sha, "R3", arguments_hash
     )
     ar = get_current_approval(session, a.id, fp)
     app_status = ar.status.value if ar else ApprovalStatus.PENDING.value
@@ -248,10 +255,12 @@ def approve(
     r.approved_at = datetime.now(timezone.utc)
     r.approved_by_session_id = current.runtime_session.id
     
+    commit_message = get_default_commit_message(t, a)
+    arguments_hash = build_approval_arguments_hash("merge.perform_squash", {"commit_message": commit_message, "merge_strategy": "squash"})
     fp = build_approval_fingerprint(
         "merge.perform_squash", current.user.id, a.project_id, w.repository_id,
         a.task_id, a.id, w.id, w.base_branch, w.base_commit_sha,
-        w.branch_name, w.result_commit_sha, "R3"
+        w.branch_name, w.result_commit_sha, "R3", arguments_hash
     )
     
     ar = get_current_approval(session, a.id, fp)
@@ -269,6 +278,7 @@ def approve(
             task_attempt_id=a.id,
             git_worktree_id=w.id,
             merge_review_id=r.id,
+            arguments_json={"commit_message": commit_message, "merge_strategy": "squash"},
             requested_by_session_id=current.runtime_session.id,
         )
     
@@ -375,10 +385,12 @@ def prepare(
     
     decision, risk_level = evaluate_action("merge.perform_squash")
     
+    commit_message = get_default_commit_message(t, a)
+    arguments_hash = build_approval_arguments_hash("merge.perform_squash", {"commit_message": commit_message, "merge_strategy": "squash"})
     fp = build_approval_fingerprint(
         "merge.perform_squash", current.user.id, a.project_id, w.repository_id,
         a.task_id, a.id, w.id, w.base_branch, current_head or w.base_commit_sha,
-        w.branch_name, w.result_commit_sha, "R3"
+        w.branch_name, w.result_commit_sha, "R3", arguments_hash
     )
     ar = get_current_approval(session, a.id, fp)
     app_status = ar.status.value if ar else ApprovalStatus.PENDING.value
@@ -429,10 +441,12 @@ def squash(
         
     decision, risk_level = evaluate_action("merge.perform_squash")
     
+    commit_message = request.commit_message or get_default_commit_message(t, a)
+    arguments_hash = build_approval_arguments_hash("merge.perform_squash", {"commit_message": commit_message, "merge_strategy": "squash"})
     fp = build_approval_fingerprint(
         "merge.perform_squash", current.user.id, a.project_id, w.repository_id,
         a.task_id, a.id, w.id, w.base_branch, current_head or w.base_commit_sha,
-        w.branch_name, w.result_commit_sha, "R3"
+        w.branch_name, w.result_commit_sha, "R3", arguments_hash
     )
     
     ar = find_valid_approval_for_merge(session, fp)
@@ -458,9 +472,7 @@ def squash(
     )
         
     path = Path(repo.repository_path)
-    message = (
-        request.commit_message or f"{t.title}\n\nSquash merge result from task attempt {a.id}."
-    )
+    message = commit_message
     merge = run_git_write(path, "merge", "--squash", w.result_commit_sha or "")
     if merge.returncode:
         run_git_write(path, "reset", "--merge", w.base_commit_sha or "HEAD")

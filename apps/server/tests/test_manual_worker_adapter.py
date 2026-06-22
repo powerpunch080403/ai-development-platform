@@ -151,8 +151,8 @@ def test_manual_worker_e2e(app_harness: AppHarness, tmp_path: Path) -> None:
     app_harness.client.post(f"/task-attempts/{attempt['id']}/merge/prepare")
     app_harness.client.post(
         f"/task-attempts/{attempt['id']}/merge/squash",
-        json={"commit_message": "docs: squash manual edit"}
-    )
+        json={}
+    ).json()
     
     # Now source HEAD is updated
     merged_sha = git(source, "rev-parse", "HEAD").stdout.strip()

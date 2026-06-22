@@ -8,6 +8,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
+def build_approval_arguments_hash(action_type: str, arguments: dict | None) -> str | None:
+    if not arguments:
+        return None
+    # We do not include the action_type in the hash itself as it's part of the outer fingerprint,
+    # but it's passed here in case future logic needs to filter sensitive fields per action.
+    canonical = json.dumps(arguments, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def build_approval_fingerprint(
     action_type: str,
     local_user_id: str,
@@ -21,6 +30,7 @@ def build_approval_fingerprint(
     result_branch: str | None,
     result_commit_sha: str | None,
     risk_level: str,
+    arguments_hash: str | None = None,
 ) -> str:
     payload = {
         "action_type": action_type,
@@ -35,6 +45,7 @@ def build_approval_fingerprint(
         "result_branch": result_branch,
         "result_commit_sha": result_commit_sha,
         "risk_level": risk_level,
+        "arguments_hash": arguments_hash,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
