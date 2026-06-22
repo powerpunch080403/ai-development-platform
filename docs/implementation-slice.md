@@ -25,7 +25,8 @@ README Edit Golden Path는 pairing부터 Project/Task/Attempt/claim/worktree/man
 
 이 Slice의 Git 동작은 status/read-only 확인에 한정한다. Dirty repository도 등록과 읽기·분석은 허용하지만 후속 Worker 실행은 dirty 상태에서 차단할 예정이다. Conversation/Tool/Task/Worker, worktree/branch/commit/merge가 구현되었고, 외부 프로세스 실행을 캡슐화한 Process Runner Baseline(환경변수 allowlist 적용, 민감정보 차단)과 안전한 External CLI Adapter Contract (Dry Run)이 추가되었다. 실제 Codex/Antigravity CLI 연동, credential injection, Remote Test Runner와 Desktop packaging은 아직 구현하지 않는다.
 
-이번 Slice의 Tool Call은 실행기가 아니라 추적 Envelope다. 실제 Owner LLM/CLI, Policy/Approval 실행, Worker와 Tool 부작용은 후속이며 Conversation History, Run State와 장기 Memory는 섞지 않는다.
+이번 Slice에서 **Risk 분류와 접근 정책 결정을 단일 `ActionPolicyDefinition` 카탈로그로 통합**했으며, 주요 부작용(Side-effect) API(Mock/Manual Worker 실행, Dry-Run 등)에 `policy_decisions` 기록을 남기도록 보강했다.
+Tool Call은 아직 실행기가 아니라 추적 Envelope다. 추후 **전체 Tool/Action Executor를 전면 개편**하여 모든 API가 단일화된 ToolCall 흐름을 강제하도록 발전시킬 계획이다. 실제 Owner LLM/CLI, Policy/Approval 실행, Worker와 Tool 부작용은 후속이며 Conversation History, Run State와 장기 Memory는 섞지 않는다.
 
 Task와 TaskAttempt 생성 상태는 각각 `draft`, `created`로 서버가 고정한다. Generic status endpoint는 운영 상태의 제한된 전이만 허용하며 `committed`, `accepted`, `merged`, `completed` 같은 보호 결과 상태는 commit, review, approval와 squash merge 전용 application service에서만 생성한다. 허용되지 않은 상태 전이는 409로 거부하고 audit event로 기록한다.
 

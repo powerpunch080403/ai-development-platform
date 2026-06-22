@@ -10,6 +10,7 @@ from aidp_server.db.models import GitWorktreeStatus, TaskAttemptStatus, TaskStat
 from aidp_server.db.models import utc_now
 from aidp_server.auth import CurrentAuth
 from aidp_server.write_scope import normalize_write_scope
+from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDecisionResult
 import json
 
 def start_manual_worker(
@@ -122,6 +123,15 @@ def submit_manual_worker(
     
     if worktree.status not in (GitWorktreeStatus.READY, GitWorktreeStatus.IN_USE, GitWorktreeStatus.DIRTY_RESULT):
         raise ValueError(f"Worktree in invalid status for submission: {worktree.status}")
+
+    pd, risk = evaluate_action("worker.run_manual")
+    if pd == PolicyDecisionResult.DENY:
+        raise ValueError("Policy denied worker.run_manual")
+    create_policy_decision(
+        session, attempt.local_user_id, "worker.run_manual",
+        project_id=attempt.project_id, repository_id=attempt.repository_id,
+        task_id=attempt.task_id, task_attempt_id=attempt.id
+    )
 
     commit_msg = commit_message or "chore: apply manual worker result"
     

@@ -23,6 +23,7 @@ from aidp_server.db.models import (
     utc_now,
 )
 from aidp_server.process_runner import execute_process_async
+from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDecisionResult
 
 
 async def execute_external_cli_dry_run(
@@ -40,6 +41,15 @@ async def execute_external_cli_dry_run(
     worktree = session.scalar(select(GitWorktree).where(GitWorktree.task_attempt_id == attempt.id))
     if worktree is None:
         raise HTTPException(409, "Assigned git worktree is required")
+        
+    pd, risk = evaluate_action("external_cli.dry_run")
+    if pd == PolicyDecisionResult.DENY:
+        raise HTTPException(status_code=403, detail="Policy denied external_cli.dry_run")
+    create_policy_decision(
+        session, local_user_id, "external_cli.dry_run",
+        project_id=attempt.project_id, repository_id=attempt.repository_id,
+        task_id=attempt.task_id, task_attempt_id=attempt.id
+    )
 
     worker_run = WorkerRun(
         local_user_id=local_user_id,

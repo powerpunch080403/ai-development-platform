@@ -22,6 +22,7 @@ from aidp_server.db.models import (
 )
 from aidp_server.db.session import get_session
 from aidp_server.git_utils import inspect_git_repository, run_git_write
+from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDecisionResult
 from aidp_server.write_scope import (
     WriteScopeError,
     parse_porcelain_v1_z,
@@ -140,6 +141,15 @@ def create_worktree(
         raise HTTPException(status_code=422, detail=status.error_message)
     if status.is_dirty:
         raise HTTPException(status_code=409, detail="Repository is dirty")
+
+    pd, risk = evaluate_action("worktree.create")
+    if pd == PolicyDecisionResult.DENY:
+        raise HTTPException(status_code=403, detail="Policy denied worktree.create")
+    create_policy_decision(
+        session, current.user.id, "worktree.create",
+        project_id=a.project_id, repository_id=repo.id, task_id=a.task_id, task_attempt_id=a.id
+    )
+
     worktrees, _ = ensure_runtime_dirs(settings)
     path = (worktrees / a.project_id[:8] / repo.id[:8] / a.id[:12]).resolve()
     if worktrees not in path.parents or path.exists():
@@ -267,6 +277,15 @@ def cleanup_worktree(
         raise HTTPException(status_code=409, detail="Worktree path is outside app-managed root")
     if target == source or source in target.parents:
         raise HTTPException(status_code=409, detail="Worktree path overlaps source repository")
+
+    pd, risk = evaluate_action("worktree.cleanup")
+    if pd == PolicyDecisionResult.DENY:
+        raise HTTPException(status_code=403, detail="Policy denied worktree.cleanup")
+    create_policy_decision(
+        session, current.user.id, "worktree.cleanup",
+        project_id=worktree.project_id, repository_id=worktree.repository_id,
+        task_id=worktree.task_id, task_attempt_id=worktree.task_attempt_id
+    )
 
     listing = run_git_write(source, "worktree", "list", "--porcelain")
     if listing.returncode:
@@ -423,6 +442,16 @@ def commit_result(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WorktreeView:
     w = owned(session, GitWorktree, wid, current.user.id)
+    
+    pd, risk = evaluate_action("worktree.commit_result")
+    if pd == PolicyDecisionResult.DENY:
+        raise HTTPException(status_code=403, detail="Policy denied worktree.commit_result")
+    create_policy_decision(
+        session, current.user.id, "worktree.commit_result",
+        project_id=w.project_id, repository_id=w.repository_id,
+        task_id=w.task_id, task_attempt_id=w.task_attempt_id
+    )
+
     try:
         apply_worktree_result(session, settings, w, request.commit_message, current.user.id)
     except WriteScopeError as error:

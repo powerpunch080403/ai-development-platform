@@ -4,16 +4,15 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
 
+from aidp_server.action_policy import get_action_policy
+
 def evaluate_action(action_type: str) -> tuple[PolicyDecisionResult, RiskLevel]:
     """
     MVP Baseline Policy Evaluator
     """
-    if action_type == "merge.perform_squash":
-        return PolicyDecisionResult.APPROVAL_REQUIRED, RiskLevel.R3
-    elif action_type in ("worktree.commit_result", "worker.run_mock", "worker.run_manual"):
-        return PolicyDecisionResult.ALLOW, RiskLevel.R1
-    elif action_type == "review.approve":
-        return PolicyDecisionResult.ALLOW, RiskLevel.R2
+    policy_def = get_action_policy(action_type)
+    if policy_def:
+        return PolicyDecisionResult(policy_def.decision), RiskLevel(policy_def.risk_level)
     
     # Anything else defaults to deny (R4) for safety in this MVP slice
     return PolicyDecisionResult.DENY, RiskLevel.R4

@@ -37,6 +37,8 @@
 - External CLI Adapter Contract Baseline (Dry-Run 검증)
 - Server-enforced Task/TaskAttempt state transition guards
 - Task write-scope and pre-commit changed-path validation
+- Unified Action Policy Catalog (Action risk level & tool registry sync)
+- Policy Decision enforcement on major side-effect APIs
 
 ### Not implemented yet
 

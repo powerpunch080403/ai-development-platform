@@ -11,6 +11,7 @@ from aidp_server.write_scope import (
     normalize_write_scope,
     validate_changed_paths,
 )
+from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDecisionResult
 
 def run_mock_worker(session: Session, attempt: TaskAttempt, commit_message: str | None = None) -> tuple[WorkerRun, ArtifactRef | None]:
     task = session.get(Task, attempt.task_id)
@@ -28,6 +29,15 @@ def run_mock_worker(session: Session, attempt: TaskAttempt, commit_message: str 
     if worktree.status not in (GitWorktreeStatus.READY, GitWorktreeStatus.IN_USE, GitWorktreeStatus.DIRTY_RESULT):
         raise ValueError(f"Worktree in invalid status for mock worker: {worktree.status}")
     
+    pd, risk = evaluate_action("worker.run_mock")
+    if pd == PolicyDecisionResult.DENY:
+        raise ValueError("Policy denied worker.run_mock")
+    create_policy_decision(
+        session, attempt.local_user_id, "worker.run_mock",
+        project_id=attempt.project_id, repository_id=attempt.repository_id,
+        task_id=task.id, task_attempt_id=attempt.id
+    )
+
     worker_run = WorkerRun(
         local_user_id=attempt.local_user_id,
         project_id=attempt.project_id,

@@ -10,7 +10,8 @@ from aidp_server.db.models import (
     ProjectStatus,
     ToolRegistryEntry,
 )
-from aidp_server.tool_registry import TOOL_DEFINITIONS, seed_tool_registry
+from aidp_server.tool_registry import seed_tool_registry
+from aidp_server.action_policy import ACTION_CATALOG
 from conftest import AppHarness
 
 
@@ -131,13 +132,13 @@ def test_tool_registry_seed_is_idempotent(app_harness: AppHarness) -> None:
         seed_tool_registry(session)
         seed_tool_registry(session)
         count = session.scalar(select(func.count()).select_from(ToolRegistryEntry))
-    assert count == len(TOOL_DEFINITIONS)
+    assert count == len([a for a in ACTION_CATALOG if a.enabled_in_tool_registry])
 
 
 def test_tool_call_validation_status_and_audit(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     registry = app_harness.client.get("/tool-registry")
-    assert registry.status_code == 200 and len(registry.json()) == len(TOOL_DEFINITIONS)
+    assert registry.status_code == 200 and len(registry.json()) == len([a for a in ACTION_CATALOG if a.enabled_in_tool_registry])
 
     missing_key = app_harness.client.post(
         "/tool-calls", json={"tool_name": "project.create", "arguments_json": {}}

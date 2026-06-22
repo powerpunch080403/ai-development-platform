@@ -10,6 +10,7 @@ from aidp_server.db.models import ProcessRun, ProcessRunStatus, TaskAttempt
 from aidp_server.auth import get_current_auth, CurrentAuth
 from aidp_server.config import get_settings, Settings
 from aidp_server.process_runner import execute_process_async
+from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDecisionResult
 
 router = APIRouter(tags=["Process Runs"])
 
@@ -112,6 +113,15 @@ async def run_test_command(
     wd = repo.repository_path
     executable = sys.executable
     arguments = ["-c", "print('Baseline process runner test successful.')"]
+
+    pd, risk = evaluate_action("process_run.create")
+    if pd == PolicyDecisionResult.DENY:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Policy denied process_run.create")
+    create_policy_decision(
+        session, current.user.id, "process_run.create",
+        project_id=attempt.project_id, repository_id=attempt.repository_id,
+        task_id=attempt.task_id, task_attempt_id=attempt.id
+    )
 
     run_record = await execute_process_async(
         session=session,

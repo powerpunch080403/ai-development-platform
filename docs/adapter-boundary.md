@@ -39,6 +39,7 @@
 - Dry-run은 서버에서 지정한 안전한 고정 명령어만 실행하며, 레포지토리 파일이나 브랜치를 변경하지 않는다.
 - `TaskAttempt` 및 Worker/Process Run 간의 연결, Context Package 아티팩트의 생성 및 저장이 검증되었다.
 - 실제 동작(파일 변경, 결과 Commit 생성 등)은 Dry-run 범위를 벗어나며, 후속 단계에서 다루게 된다.
+- 주요 Adapter 실행 API (Mock, Manual, Dry Run 등)는 실행 전 중앙 `ACTION_CATALOG`의 정책을 평가하고 `policy_decisions` 기록을 남긴다.
 
 ## Write scope boundary
 

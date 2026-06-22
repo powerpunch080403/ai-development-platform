@@ -312,6 +312,18 @@ def reject(
     r = session.scalar(select(MergeReview).where(MergeReview.task_attempt_id == a.id).order_by(MergeReview.created_at.desc()))
     r = r or new_review(session, current, a, w, MergeReviewStatus.CREATED, None)
     
+    pd, risk = evaluate_action("review.reject")
+    create_policy_decision(
+        session=session,
+        local_user_id=current.user.id,
+        action_type="review.reject",
+        session_id=current.runtime_session.id if hasattr(current, 'runtime_session') else None,
+        project_id=a.project_id,
+        repository_id=w.repository_id,
+        task_id=a.task_id,
+        task_attempt_id=a.id,
+    )
+    
     r.status = MergeReviewStatus.REJECTED
     r.review_summary = request.review_summary
     r.rejected_at = datetime.now(timezone.utc)
@@ -348,6 +360,18 @@ def prepare(
     a, t, w, repo = bundle(session, aid, current.user.id)
     ensure_committed(a, w)
     merge_possible, source_clean, base_head_matches, current_branch, current_head = checks(repo, w)
+    
+    prepare_decision, _ = evaluate_action("merge.prepare_squash")
+    create_policy_decision(
+        session=session,
+        local_user_id=current.user.id,
+        action_type="merge.prepare_squash",
+        session_id=current.runtime_session.id if hasattr(current, 'runtime_session') else None,
+        project_id=a.project_id,
+        repository_id=w.repository_id,
+        task_id=a.task_id,
+        task_attempt_id=a.id,
+    )
     
     decision, risk_level = evaluate_action("merge.perform_squash")
     
