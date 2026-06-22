@@ -27,7 +27,7 @@ class ExternalCliRunExperimentalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     adapter_kind: Literal["antigravity_cli"] = "antigravity_cli"
     worker_id: str
-    mode: Literal["controlled_readme_test"] = "controlled_readme_test"
+    mode: Literal["controlled_readme_test", "controlled_scope_violation_test"] = "controlled_readme_test"
 
 
 class ExternalCliRunResult(BaseModel):
@@ -107,7 +107,7 @@ async def run_antigravity_cli_experimental(
 ) -> dict[str, object]:
     attempt = get_owned_attempt(session, task_attempt_id, current.user.id)
     result = await execute_antigravity_cli_worker(
-        session, settings, attempt, current.user.id, request.worker_id
+        session, settings, attempt, current.user.id, request.worker_id, request.mode
     )
     session.commit()
     return result

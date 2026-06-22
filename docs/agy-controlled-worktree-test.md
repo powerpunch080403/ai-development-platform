@@ -60,6 +60,17 @@ $env:AIDP_RUN_REAL_AGY_TESTS="true"
 9. **Complete the Golden Path**
    Proceed manually to review, approve, and squash-merge the result commit using the standard UI actions.
 
+## Write Scope Violation Path (Failure Path) E2E
+
+- Real AGY `write_scope` violation is explicitly covered by an opt-in E2E test.
+- This Violation E2E test exclusively uses a temporary repository to ensure source safety.
+- AGY is instructed by a controlled enum mode (`controlled_scope_violation_test`), **not a free-form prompt**, avoiding arbitrary command execution.
+- If AGY creates `OUT_OF_SCOPE.txt` while the task's `write_scope` allows only `README.md`, `apply_worktree_result` detects the violation and securely rejects the execution.
+- No result commit is created in the Git worktree.
+- The Owner review/merge state is completely skipped/prevented.
+- Real AGY tests, both success and violation paths, are skipped by default in the test suite.
+- `--dangerously-skip-permissions` remains completely disabled by default on the server and is securely governed by environment toggles.
+
 ## Opt-in Review/Merge E2E
 
 `test_real_agy_controlled_result_can_be_reviewed_and_squash_merged` verifies the complete controlled result path through Owner review, explicit approval, squash preparation, squash merge and `cleanup_pending`. It creates and targets only a pytest `tmp_path` repository; neither the implementation repository nor a user project is used as the AGY target.

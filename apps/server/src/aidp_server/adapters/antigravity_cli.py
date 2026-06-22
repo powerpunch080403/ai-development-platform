@@ -70,6 +70,7 @@ async def execute_antigravity_cli_worker(
     attempt: TaskAttempt,
     local_user_id: str,
     worker_id: str,
+    mode: str,
 ) -> dict[str, Any]:
     availability = check_antigravity_cli_available(settings)
     status = availability["status"]
@@ -125,20 +126,32 @@ async def execute_antigravity_cli_worker(
     # We do NOT pass executable or args from the HTTP request body.
     cli_path = settings.antigravity_cli_path
     
-    controlled_prompt = (
-        "You are running inside an isolated git worktree.\n\n"
-        "Task:\nAppend exactly one line to README.md:\n\n"
-        "\"Controlled AGY worker test completed.\"\n\n"
-        "Rules:\n"
-        "- Modify README.md only.\n"
-        "- Do not create new files.\n"
-        "- Do not modify any other file.\n"
-        "- Do not run network commands.\n"
-        "- Do not read or modify .env files.\n"
-        "- Do not modify git history.\n"
-        "- Do not commit changes.\n"
-        "- Stop after editing README.md."
-    )
+    if mode == "controlled_scope_violation_test":
+        controlled_prompt = (
+            "You are running inside an isolated git worktree.\n\n"
+            "Task:\nCreate a new file named OUT_OF_SCOPE.txt with exactly this content:\n\n"
+            "\"This file should be rejected by write_scope.\"\n\n"
+            "Rules:\n"
+            "- Do not modify README.md.\n"
+            "- Do not modify git history.\n"
+            "- Do not commit changes.\n"
+            "- Stop after creating OUT_OF_SCOPE.txt."
+        )
+    else:
+        controlled_prompt = (
+            "You are running inside an isolated git worktree.\n\n"
+            "Task:\nAppend exactly one line to README.md:\n\n"
+            "\"Controlled AGY worker test completed.\"\n\n"
+            "Rules:\n"
+            "- Modify README.md only.\n"
+            "- Do not create new files.\n"
+            "- Do not modify any other file.\n"
+            "- Do not run network commands.\n"
+            "- Do not read or modify .env files.\n"
+            "- Do not modify git history.\n"
+            "- Do not commit changes.\n"
+            "- Stop after editing README.md."
+        )
 
     arguments = build_agy_print_command(
         prompt=controlled_prompt,
