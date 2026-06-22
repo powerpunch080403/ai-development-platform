@@ -120,3 +120,37 @@ export type CancelWorkerRunRequest = { reason?: string };
 
 export type ApprovalRequestDto = { id:string; local_user_id:string; project_id:string|null; repository_id:string|null; task_attempt_id:string|null; action_type:string; risk_level:string; status:string; title:string; description:string|null; created_at:string; decided_at:string|null };
 export type PolicyDecisionDto = { id:string; local_user_id:string|null; action_type:string; risk_level:string; decision:string; reason:string; created_at:string };
+
+export type ProcessRunStatus = "created" | "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "blocked";
+
+export type ProcessRunDto = {
+  id: string;
+  local_user_id: string | null;
+  project_id: string | null;
+  repository_id: string | null;
+  task_id: string | null;
+  task_attempt_id: string | null;
+  worker_id: string | null;
+  worker_run_id: string | null;
+  tool_call_id: string | null;
+  command_display: string;
+  executable: string;
+  arguments_json: Record<string, unknown>;
+  working_directory: string;
+  status: ProcessRunStatus;
+  exit_code: number | null;
+  timeout_seconds: number;
+  started_at: string | null;
+  completed_at: string | null;
+  timed_out_at: string | null;
+  cancelled_at: string | null;
+  failed_at: string | null;
+  duration_ms: number | null;
+  stdout_artifact_id: string | null;
+  stderr_artifact_id: string | null;
+  combined_log_artifact_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};

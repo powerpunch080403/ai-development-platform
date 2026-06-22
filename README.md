@@ -33,6 +33,7 @@
 - Local approval request baseline
 - User-approved squash merge
 - Safe worktree cleanup
+- Process Runner Baseline (향후 CLI Adapter 연동용 안전한 프로세스 실행)
 
 ### Not implemented yet
 

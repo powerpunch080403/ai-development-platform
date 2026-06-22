@@ -51,6 +51,10 @@ TOOL_DEFINITIONS = (
     ("approval.reject", "approval", True, "R2"),
     ("policy.evaluate", "policy", False, "R1"),
     ("policy.record_decision", "policy", True, "R2"),
+    ("process_run.create", "process_run", True, "R2"),
+    ("process_run.get", "process_run", False, "R1"),
+    ("process_run.list_for_attempt", "process_run", False, "R1"),
+    ("process_run.cancel", "process_run", True, "R2"),
 )
 
 

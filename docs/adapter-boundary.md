@@ -13,20 +13,17 @@
 
 ## 중요한 경계
 
-- Adapter는 main/default branch에 직접 merge하지 않는다.
+- Adapter는 main/default 단일 branch에 직접 merge하지 않는다.
 - Adapter는 Task Attempt 범위 밖에서 실행하지 않는다.
 - Adapter는 worktree 밖 파일을 수정하지 않는다.
 - Adapter 결과는 result branch commit으로 남긴다.
 - Owner review와 approval/squash merge는 별도 단계다.
 
-## Process Runner로 넘겨야 할 후보
+## Process Runner Baseline
 
-*(아직 구현하지 않은 외부 Process Runner를 위한 요구사항)*
-- command timeout
-- stdout/stderr capture
-- cancellation
-- environment isolation
-- working directory validation
-- artifact capture
-- process exit code handling
-- secret redaction
+현재 저장소에는 외부 CLI 프로세스 실행을 안전하게 감싸는 `Process Runner`의 기반이 구현되어 있다.
+- `shell=True` 없이 인자 배열 기반으로만 실행한다.
+- 허용된 Working Directory (저장소 혹은 워크트리 경로) 내에서만 실행을 허가한다.
+- timeout 및 stdout/stderr 아티팩트 저장을 지원한다.
+- API 키 등 민감정보 마스킹(Redaction)을 수행한다.
+- **아직 실제 Codex/Antigravity CLI를 실행하지 않으며, 임의 명령어 실행 UI도 존재하지 않는다.**

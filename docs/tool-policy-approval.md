@@ -9,8 +9,8 @@
 
 모든 action은 `policy_decisions`에 따라 평가된다.
 
-- **R1 (Allow)**: `worktree.commit_result`, `worker.run_mock`, `worker.run_manual`. 위험도가 낮은 일반 작업.
-- **R2 (Allow)**: `review.approve`. 리뷰어 권한을 통해 실행 가능한 승인 동작.
+- **R1 (Allow)**: `worktree.commit_result`, `worker.run_mock`, `worker.run_manual`, `process_run.get`, `process_run.list_for_attempt`. 위험도가 낮은 일반 작업 및 조회.
+- **R2 (Allow)**: `review.approve`, `process_run.create`, `process_run.cancel`. 리뷰어 권한이나 안전한 격리 환경 내의 실행 승인 동작.
 - **R3 (Approval Required)**: `merge.perform_squash`. Squash Merge 등 저장소를 변경하는 파괴적/주요 동작은 사전에 생성된 유효한 ApprovalRequest를 필요로 한다.
 - **R4 (Deny)**: 그 외 정의되지 않거나 극도로 위험한 동작은 현재 Deny로 처리된다.
 
