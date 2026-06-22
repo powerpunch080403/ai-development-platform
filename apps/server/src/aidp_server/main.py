@@ -8,6 +8,7 @@ from aidp_server.health import router as health_router
 from aidp_server.projects import router as projects_router
 from aidp_server.conversations import router as conversations_router
 from aidp_server.tool_calls import router as tool_calls_router
+from aidp_server.work import router as work_router
 from aidp_server.system import router as system_router
 
 
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(conversations_router)
     app.include_router(tool_calls_router)
+    app.include_router(work_router)
     return app
 
 

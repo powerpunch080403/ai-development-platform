@@ -8,6 +8,7 @@ import type {
   MessageDto,
   AgentRunDto,
   ToolRegistryEntryDto,
+  WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto,
 } from "@aidp/shared-contracts";
 
 import {
@@ -26,6 +27,8 @@ import {
   listAgentRuns,
   createAgentRun,
   listToolRegistry,
+  listWorkItems, createWorkItem, listTasks, createTask, listAttempts, createAttempt,
+  listWorkers, registerWorker, heartbeatWorker, revokeWorker, claimAttempt, releaseAttempt,
 } from "./api/client";
 
 const defaultDeviceName = `Web UI on ${navigator.userAgent.includes("Windows") ? "Windows" : "this device"}`;
@@ -95,6 +98,30 @@ function RecordsPanel({ projects, selectedProjectId }: { projects: ProjectDto[];
     <section className="panel"><h2>Tool Registry</h2><p className="muted">Record contracts only; no tools execute in this slice.</p>{tools.map((tool) => <div className="tool-row" key={tool.id}><code>{tool.tool_name}</code><span>{tool.enabled ? "enabled" : "disabled"} · {tool.default_risk_level}</span></div>)}</section>
     {error && <p className="error" role="alert">{error}</p>}
   </section>;
+}
+
+function WorkPanel({ projectId, repositories }: { projectId: string; repositories: ProjectRepositoryDto[] }) {
+  const [items,setItems]=useState<WorkItemDto[]>([]); const [tasks,setTasks]=useState<TaskDto[]>([]);
+  const [attempts,setAttempts]=useState<TaskAttemptDto[]>([]); const [workers,setWorkers]=useState<WorkerDto[]>([]);
+  const [selectedTask,setSelectedTask]=useState(""); const [selectedWorker,setSelectedWorker]=useState("");
+  const [workTitle,setWorkTitle]=useState(""); const [taskTitle,setTaskTitle]=useState(""); const [instructions,setInstructions]=useState("");
+  const [workItemId,setWorkItemId]=useState(""); const [repositoryId,setRepositoryId]=useState(""); const [workerName,setWorkerName]=useState(""); const [error,setError]=useState("");
+  useEffect(()=>{if(!projectId){setItems([]);setTasks([]);return} listWorkItems(projectId).then(setItems);listTasks(projectId).then(v=>{setTasks(v);setSelectedTask(v[0]?.id??"")});listWorkers().then(v=>{setWorkers(v);setSelectedWorker(v[0]?.id??"")})},[projectId]);
+  useEffect(()=>{if(selectedTask)listAttempts(selectedTask).then(setAttempts);else setAttempts([])},[selectedTask]);
+  async function addWork(e:FormEvent){e.preventDefault();try{const v=await createWorkItem(projectId,{title:workTitle,work_item_type:"feature"});setItems(x=>[...x,v]);setWorkTitle("")}catch(x){setError(x instanceof Error?x.message:"Work item failed")}}
+  async function addTask(e:FormEvent){e.preventDefault();try{const v=await createTask(projectId,{title:taskTitle,instructions,repository_id:repositoryId||undefined,work_item_id:workItemId||undefined,risk_level:"R1",requested_worker_kind:"manual"});setTasks(x=>[v,...x]);setSelectedTask(v.id);setTaskTitle("");setInstructions("")}catch(x){setError(x instanceof Error?x.message:"Task failed")}}
+  async function addWorker(e:FormEvent){e.preventDefault();const v=await registerWorker({display_name:workerName,worker_kind:"manual",capabilities:{manual:true}});setWorkers(x=>[...x,v]);setSelectedWorker(v.id);setWorkerName("")}
+  async function addAttempt(){if(!selectedTask)return;const v=await createAttempt(selectedTask);setAttempts(x=>[...x,v])}
+  async function workerAction(kind:"heartbeat"|"revoke"){if(!selectedWorker)return;const v=kind==="heartbeat"?await heartbeatWorker(selectedWorker):await revokeWorker(selectedWorker);setWorkers(x=>x.map(w=>w.id===v.id?v:w))}
+  async function lease(a:TaskAttemptDto,release=false){if(!selectedWorker)return;try{const v=release?await releaseAttempt(selectedWorker,a.id):await claimAttempt(selectedWorker,a.id);setAttempts(x=>x.map(i=>i.id===v.id?v:i));setWorkers(await listWorkers())}catch(x){setError(x instanceof Error?x.message:"Lease operation failed")}}
+  if(!projectId)return null;
+  return <section className="panel"><h2>Work / Tasks / Workers</h2>
+    <div className="records-grid"><div><form className="nested-form" onSubmit={addWork}><label>Work item title<input value={workTitle} onChange={e=>setWorkTitle(e.target.value)} required/></label><button>Create work item</button></form>{items.map(i=><p key={i.id}><span className="badge">{i.status}</span> {i.title}</p>)}</div>
+    <div><form className="nested-form" onSubmit={addWorker}><label>Worker name<input value={workerName} onChange={e=>setWorkerName(e.target.value)} required/></label><button>Register manual worker</button></form><select value={selectedWorker} onChange={e=>setSelectedWorker(e.target.value)}>{workers.map(w=><option key={w.id} value={w.id}>{w.display_name} · {w.status}</option>)}</select><div className="button-row"><button type="button" className="secondary" onClick={()=>workerAction("heartbeat")}>Heartbeat</button><button type="button" className="secondary" onClick={()=>workerAction("revoke")}>Revoke</button></div></div></div>
+    <form className="nested-form" onSubmit={addTask}><label>Task title<input value={taskTitle} onChange={e=>setTaskTitle(e.target.value)} required/></label><label>Instructions<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} required/></label><label>Repository<select value={repositoryId} onChange={e=>setRepositoryId(e.target.value)}><option value="">None</option>{repositories.map(r=><option key={r.id} value={r.id}>{r.repository_name}</option>)}</select></label><label>Work item<select value={workItemId} onChange={e=>setWorkItemId(e.target.value)}><option value="">None</option>{items.map(i=><option key={i.id} value={i.id}>{i.title}</option>)}</select></label><button>Create draft task</button></form>
+    {tasks.length>0&&<><label>Selected task<select value={selectedTask} onChange={e=>setSelectedTask(e.target.value)}>{tasks.map(t=><option key={t.id} value={t.id}>{t.title} · {t.status}</option>)}</select></label><button type="button" onClick={addAttempt}>Create attempt</button>{attempts.map(a=><article className="repository-card" key={a.id}><div>Attempt #{a.attempt_number} · <span className="badge">{a.status}</span></div><div>Lease: {a.lease_expires_at??"none"}</div><div className="button-row"><button type="button" onClick={()=>lease(a)}>Claim</button><button type="button" className="secondary" onClick={()=>lease(a,true)}>Release to created</button></div></article>)}</>}
+    {error&&<p className="error">{error}</p>}
+  </section>
 }
 
 function Workspace({ auth, onLogout }: { auth: AuthState; onLogout: () => Promise<void> }) {
@@ -240,6 +267,7 @@ function Workspace({ auth, onLogout }: { auth: AuthState; onLogout: () => Promis
         </section>
       )}
       <RecordsPanel projects={projects} selectedProjectId={selectedProjectId} />
+      <WorkPanel projectId={selectedProjectId} repositories={repositories} />
       {error && <p className="error" role="alert">{error}</p>}
     </section>
   );

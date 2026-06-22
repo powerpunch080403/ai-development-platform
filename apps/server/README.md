@@ -2,7 +2,7 @@
 
 App-managed Local Runtime의 FastAPI server skeleton이다.
 
-현재 구현은 local authentication, Project/Repository, Conversation/Message, Agent Run/Step, Tool Registry/Call Envelope와 Audit Event 기록을 제공한다. 실제 Owner 모델, Task와 Worker는 아직 구현하지 않았다. `python -m aidp_server.main`은 개발 server를 실행하지 않으므로 uvicorn을 사용한다.
+현재 구현은 기존 기록 계층 위에 Work Item/Task/Task Attempt와 Worker registry/claim lease를 제공한다. 실제 Owner 모델과 Worker process는 아직 구현하지 않았다. `python -m aidp_server.main`은 개발 server를 실행하지 않으므로 uvicorn을 사용한다.
 
 ## Windows PowerShell
 
@@ -92,3 +92,14 @@ Git 확인은 argument array, `shell=False`, timeout을 사용해 `rev-parse`, `
 - Audit: `GET /audit-events`와 project/conversation/agent-run filter
 
 Conversation History와 Agent Run 상태는 별도 테이블이다. Tool Call은 enabled registry 항목만 Envelope로 기록하며 어떤 부작용도 실행하지 않는다. Side-effect 후보 Tool은 idempotency key가 필수이고 같은 tool/key/project/repository scope는 `409`로 차단한다. Audit Event는 Conversation, Message, Run과 Tool Call의 주요 변경을 추적하며 secret을 metadata에 저장하지 않는다.
+
+## Work, Task와 Worker API
+
+- Project별 Work Item/Task 생성·목록과 status 변경
+- Task별 Attempt 생성·목록과 status 변경
+- Worker 등록·목록·heartbeat·revoke
+- `POST /workers/{id}/claim`, `POST /workers/{id}/release`
+
+Work Item 기본 status는 `active`, Task는 `draft`, Attempt는 `created`다. Attempt number는 Task별 1부터 증가한다. Claim은 Attempt를 `running_worker`, Task를 `running`, Worker를 `claimed`로 바꾸고 5분 lease를 설정한다. Heartbeat는 Worker의 active lease를 5분 연장한다. Release는 claim/lease/claimed-at을 지우고 Worker를 `available`로 만들며, 요청한 제한된 next status만 적용한다. 만료 lease 재claim 시 이전 Worker는 `expired`가 된다.
+
+Dirty repository 차단, Worker process, adapter, worktree, branch/commit/merge는 후속 slice다.

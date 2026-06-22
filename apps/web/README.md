@@ -2,7 +2,7 @@
 
 Desktop App Shell에서 재사용할 수 있는 React/TypeScript/Vite Web UI skeleton이다.
 
-현재는 pairing/session과 Project/Repository UI 위에 일반 또는 Project Conversation 생성, user Message append, Agent Run record 생성·목록과 Tool Registry 표시를 포함한다. 실제 AI 응답과 Tool 실행은 없다. Session token은 HttpOnly cookie만 사용한다.
+현재는 기존 UI 위에 Work Item과 draft Task 생성, Attempt 생성, Manual Worker 등록, heartbeat/revoke, claim/release와 lease 표시를 포함한다. 실제 Worker process, worktree와 commit은 없다. Session token은 HttpOnly cookie만 사용한다.
 
 ## Windows PowerShell
 

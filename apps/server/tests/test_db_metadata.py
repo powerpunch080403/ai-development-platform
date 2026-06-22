@@ -17,6 +17,10 @@ def test_identity_tables_are_registered_in_metadata() -> None:
         "tool_registry",
         "tool_calls",
         "audit_events",
+        "work_items",
+        "tasks",
+        "task_attempts",
+        "workers",
     }.issubset(Base.metadata.tables)
 
 

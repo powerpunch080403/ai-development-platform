@@ -43,6 +43,10 @@ def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(
             "tool_registry",
             "tool_calls",
             "audit_events",
+            "work_items",
+            "tasks",
+            "task_attempts",
+            "workers",
         }.issubset(table_names)
 
         command.downgrade(alembic_config, "base")

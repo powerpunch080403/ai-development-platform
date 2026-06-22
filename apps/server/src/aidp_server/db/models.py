@@ -149,6 +149,85 @@ class AuditSeverity(StrEnum):
     CRITICAL = "critical"
 
 
+class WorkItemType(StrEnum):
+    GOAL = "goal"
+    FEATURE = "feature"
+    BUG = "bug"
+    RESEARCH = "research"
+    IMPROVEMENT = "improvement"
+    CHORE = "chore"
+    UNKNOWN = "unknown"
+
+
+class WorkItemStatus(StrEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    BLOCKED = "blocked"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    ARCHIVED = "archived"
+
+
+class TaskStatus(StrEnum):
+    DRAFT = "draft"
+    READY = "ready"
+    QUEUED = "queued"
+    RUNNING = "running"
+    WAITING_FOR_REVIEW = "waiting_for_review"
+    CHANGES_REQUESTED = "changes_requested"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class RiskLevel(StrEnum):
+    R0 = "R0"
+    R1 = "R1"
+    R2 = "R2"
+    R3 = "R3"
+    R4 = "R4"
+
+
+class WorkerKind(StrEnum):
+    MOCK = "mock"
+    MANUAL = "manual"
+    EXTERNAL_CLI = "external_cli"
+    SYSTEM = "system"
+    UNKNOWN = "unknown"
+
+
+class TaskAttemptStatus(StrEnum):
+    CREATED = "created"
+    PREPARING_WORKTREE = "preparing_worktree"
+    RUNNING_WORKER = "running_worker"
+    WAITING_FOR_COMMIT = "waiting_for_commit"
+    COMMITTED = "committed"
+    WORKER_FAILED = "worker_failed"
+    REVIEWING = "reviewing"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    RETRY_REQUESTED = "retry_requested"
+    MERGE_READY = "merge_ready"
+    MERGED = "merged"
+    ABANDONED = "abandoned"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class WorkerStatus(StrEnum):
+    AVAILABLE = "available"
+    CLAIMED = "claimed"
+    RUNNING = "running"
+    HEARTBEAT_LOST = "heartbeat_lost"
+    EXPIRED = "expired"
+    RELEASED = "released"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    REVOKED = "revoked"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
@@ -513,3 +592,122 @@ class AuditEvent(TimestampMixin, Base):
     )
     message: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+
+
+class WorkItem(TimestampMixin, Base):
+    __tablename__ = "work_items"
+    __table_args__ = (
+        Index("ix_work_items_local_user_id", "local_user_id"),
+        Index("ix_work_items_project_id", "project_id"),
+        Index("ix_work_items_parent_id", "parent_work_item_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    parent_work_item_id: Mapped[str | None] = mapped_column(
+        ForeignKey("work_items.id"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    work_item_type: Mapped[WorkItemType] = mapped_column(enum_column(WorkItemType), nullable=False)
+    status: Mapped[WorkItemStatus] = mapped_column(
+        enum_column(WorkItemStatus), nullable=False, default=WorkItemStatus.ACTIVE
+    )
+    priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Task(TimestampMixin, Base):
+    __tablename__ = "tasks"
+    __table_args__ = (
+        Index("ix_tasks_local_user_id", "local_user_id"),
+        Index("ix_tasks_project_id", "project_id"),
+        Index("ix_tasks_work_item_id", "work_item_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    repository_id: Mapped[str | None] = mapped_column(
+        ForeignKey("project_repositories.id"), nullable=True
+    )
+    work_item_id: Mapped[str | None] = mapped_column(ForeignKey("work_items.id"), nullable=True)
+    conversation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("conversations.id"), nullable=True
+    )
+    agent_run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True)
+    created_by_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("sessions.id"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[TaskStatus] = mapped_column(
+        enum_column(TaskStatus), nullable=False, default=TaskStatus.DRAFT
+    )
+    risk_level: Mapped[RiskLevel] = mapped_column(enum_column(RiskLevel), nullable=False)
+    requested_worker_kind: Mapped[WorkerKind | None] = mapped_column(
+        enum_column(WorkerKind), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+
+class Worker(Base):
+    __tablename__ = "workers"
+    __table_args__ = (Index("ix_workers_local_user_id", "local_user_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    device_id: Mapped[str | None] = mapped_column(ForeignKey("devices.id"), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    worker_kind: Mapped[WorkerKind] = mapped_column(enum_column(WorkerKind), nullable=False)
+    status: Mapped[WorkerStatus] = mapped_column(
+        enum_column(WorkerStatus), nullable=False, default=WorkerStatus.AVAILABLE
+    )
+    capabilities_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TaskAttempt(TimestampMixin, Base):
+    __tablename__ = "task_attempts"
+    __table_args__ = (
+        Index("ix_task_attempts_task_id", "task_id"),
+        Index("ix_task_attempts_local_user_id", "local_user_id"),
+        UniqueConstraint("task_id", "attempt_number", name="uq_task_attempt_number"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), nullable=False)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    repository_id: Mapped[str | None] = mapped_column(ForeignKey("project_repositories.id"))
+    worker_id: Mapped[str | None] = mapped_column(ForeignKey("workers.id"))
+    claimed_by_worker_id: Mapped[str | None] = mapped_column(ForeignKey("workers.id"))
+    status: Mapped[TaskAttemptStatus] = mapped_column(
+        enum_column(TaskAttemptStatus), nullable=False, default=TaskAttemptStatus.CREATED
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    result_summary: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )

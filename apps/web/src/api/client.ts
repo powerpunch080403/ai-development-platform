@@ -13,6 +13,7 @@ import type {
   CreateConversationRequest,
   AppendMessageRequest,
   CreateAgentRunRequest,
+  WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto, CreateWorkItemRequest, CreateTaskRequest, RegisterWorkerRequest,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -97,3 +98,15 @@ export function appendMessage(id: string, input: AppendMessageRequest): Promise<
 export function listAgentRuns(id: string): Promise<AgentRunDto[]> { return request<AgentRunDto[]>(`/conversations/${id}/agent-runs`); }
 export function createAgentRun(input: CreateAgentRunRequest): Promise<AgentRunDto> { return request<AgentRunDto>("/agent-runs", { method: "POST", body: JSON.stringify(input) }); }
 export function listToolRegistry(): Promise<ToolRegistryEntryDto[]> { return request<ToolRegistryEntryDto[]>("/tool-registry"); }
+export function listWorkItems(projectId:string):Promise<WorkItemDto[]>{return request<WorkItemDto[]>(`/projects/${projectId}/work-items`)}
+export function createWorkItem(projectId:string,input:CreateWorkItemRequest):Promise<WorkItemDto>{return request<WorkItemDto>(`/projects/${projectId}/work-items`,{method:"POST",body:JSON.stringify(input)})}
+export function listTasks(projectId:string):Promise<TaskDto[]>{return request<TaskDto[]>(`/projects/${projectId}/tasks`)}
+export function createTask(projectId:string,input:CreateTaskRequest):Promise<TaskDto>{return request<TaskDto>(`/projects/${projectId}/tasks`,{method:"POST",body:JSON.stringify(input)})}
+export function listAttempts(taskId:string):Promise<TaskAttemptDto[]>{return request<TaskAttemptDto[]>(`/tasks/${taskId}/attempts`)}
+export function createAttempt(taskId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/tasks/${taskId}/attempts`,{method:"POST",body:"{}"})}
+export function listWorkers():Promise<WorkerDto[]>{return request<WorkerDto[]>("/workers")}
+export function registerWorker(input:RegisterWorkerRequest):Promise<WorkerDto>{return request<WorkerDto>("/workers",{method:"POST",body:JSON.stringify(input)})}
+export function heartbeatWorker(id:string):Promise<WorkerDto>{return request<WorkerDto>(`/workers/${id}/heartbeat`,{method:"POST"})}
+export function revokeWorker(id:string):Promise<WorkerDto>{return request<WorkerDto>(`/workers/${id}/revoke`,{method:"POST"})}
+export function claimAttempt(workerId:string,attemptId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/workers/${workerId}/claim`,{method:"POST",body:JSON.stringify({task_attempt_id:attemptId})})}
+export function releaseAttempt(workerId:string,attemptId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/workers/${workerId}/release`,{method:"POST",body:JSON.stringify({task_attempt_id:attemptId,next_status:"created"})})}

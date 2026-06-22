@@ -13,6 +13,17 @@ TOOL_DEFINITIONS = (
     ("agent_run.create", "agent_run", True, "R1"),
     ("audit.record_event", "audit", True, "R1"),
     ("tool_call.record", "tool", True, "R1"),
+    ("work_item.create", "work_item", True, "R1"),
+    ("work_item.update_status", "work_item", True, "R1"),
+    ("task.create", "task", True, "R2"),
+    ("task.update_status", "task", True, "R2"),
+    ("task_attempt.create", "task_attempt", True, "R2"),
+    ("task_attempt.update_status", "task_attempt", True, "R2"),
+    ("worker.register", "worker", True, "R2"),
+    ("worker.claim_attempt", "worker", True, "R2"),
+    ("worker.heartbeat", "worker", True, "R1"),
+    ("worker.release_claim", "worker", True, "R2"),
+    ("worker.revoke", "worker", True, "R2"),
 )
 
 
