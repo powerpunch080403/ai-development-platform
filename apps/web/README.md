@@ -3,6 +3,7 @@
 Desktop App Shell에서 재사용할 수 있는 React/TypeScript/Vite Web UI skeleton이다.
 
 Attempt에서 Worktree 생성, path/branch/base 표시, status/diff 조회, manual result commit과 artifact text 조회를 제공한다. 파일 편집기는 없으며 사용자가 표시된 worktree path에서 직접 수정한다. 기본 branch merge는 하지 않는다.
+Review-ready 목록, diff와 merge 조건, approve/reject/prepare/squash 버튼을 제공한다. Squash는 명시적 approve 이후 local base branch에만 수행한다.
 
 ## Windows PowerShell
 

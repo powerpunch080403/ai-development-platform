@@ -10,6 +10,7 @@ import type {
   ToolRegistryEntryDto,
   WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto,
   GitWorktreeDto,ArtifactRefDto,
+  AttemptReviewDto,
 } from "@aidp/shared-contracts";
 
 import {
@@ -31,6 +32,7 @@ import {
   listWorkItems, createWorkItem, listTasks, createTask, listAttempts, createAttempt,
   listWorkers, registerWorker, heartbeatWorker, revokeWorker, claimAttempt, releaseAttempt,
   createWorktree,getWorktreeStatus,getWorktreeDiff,commitWorktree,listArtifacts,readArtifact,
+  listMergeReady,getReview,approveReview,rejectReview,prepareSquash,performSquash,
 } from "./api/client";
 
 const defaultDeviceName = `Web UI on ${navigator.userAgent.includes("Windows") ? "Windows" : "this device"}`;
@@ -130,6 +132,8 @@ function WorkPanel({ projectId, repositories }: { projectId: string; repositorie
     {error&&<p className="error">{error}</p>}
   </section>
 }
+
+function ReviewPanel(){const[ready,setReady]=useState<AttemptReviewDto[]>([]);const[selected,setSelected]=useState<AttemptReviewDto|null>(null);const[summary,setSummary]=useState("");const[message,setMessage]=useState("");const[notice,setNotice]=useState("");const refresh=()=>listMergeReady().then(setReady).catch((e:Error)=>setNotice(e.message));useEffect(()=>{void refresh()},[]);async function choose(id:string){setSelected(await getReview(id))}async function action(kind:"approve"|"reject"|"prepare"|"merge"){if(!selected)return;try{if(kind==="approve")setSelected(await approveReview(selected.task_attempt_id,summary));else if(kind==="reject")setSelected(await rejectReview(selected.task_attempt_id,summary));else if(kind==="prepare"){const p=await prepareSquash(selected.task_attempt_id);setNotice(`Merge ready: ${p.merge_possible}`)}else setSelected(await performSquash(selected.task_attempt_id,message));void refresh()}catch(e){setNotice(e instanceof Error?e.message:"Review action failed")}}return <section className="panel"><h2>Owner Review / Squash Merge</h2><button type="button" className="secondary" onClick={refresh}>Refresh review ready</button><div>{ready.map(v=><button type="button" className="secondary" key={v.task_attempt_id} onClick={()=>choose(v.task_attempt_id)}>{v.task_title} · {v.repository_name}</button>)}</div>{selected&&<><dl><div><dt>Branches</dt><dd>{selected.base_branch} ← {selected.result_branch}</dd></div><div><dt>Commits</dt><dd>{selected.base_commit_sha.slice(0,8)} → {selected.result_commit_sha.slice(0,8)}</dd></div><div><dt>Checks</dt><dd>clean {String(selected.source_clean)} · base matches {String(selected.base_head_matches)} · approved {selected.review_status}</dd></div><div><dt>Merged</dt><dd>{selected.merge_commit_sha?.slice(0,8)??"not merged"}</dd></div></dl><pre className="diff-view">{selected.diff}</pre><label>Review summary<input value={summary} onChange={e=>setSummary(e.target.value)}/></label><label>Squash commit message<input value={message} onChange={e=>setMessage(e.target.value)}/></label><div className="button-row"><button type="button" onClick={()=>action("approve")}>Approve</button><button type="button" className="secondary" onClick={()=>action("reject")}>Reject</button><button type="button" onClick={()=>action("prepare")}>Prepare merge</button><button type="button" onClick={()=>action("merge")}>Squash merge</button></div></>}{notice&&<p className="status">{notice}</p>}</section>}
 
 function Workspace({ auth, onLogout }: { auth: AuthState; onLogout: () => Promise<void> }) {
   const [projects, setProjects] = useState<ProjectDto[]>([]);
@@ -275,6 +279,7 @@ function Workspace({ auth, onLogout }: { auth: AuthState; onLogout: () => Promis
       )}
       <RecordsPanel projects={projects} selectedProjectId={selectedProjectId} />
       <WorkPanel projectId={selectedProjectId} repositories={repositories} />
+      <ReviewPanel />
       {error && <p className="error" role="alert">{error}</p>}
     </section>
   );

@@ -255,6 +255,17 @@ class ArtifactKind(StrEnum):
     UNKNOWN = "unknown"
 
 
+class MergeReviewStatus(StrEnum):
+    CREATED = "created"
+    REVIEWING = "reviewing"
+    APPROVED = "approved"
+    MERGE_PREPARED = "merge_prepared"
+    MERGED = "merged"
+    REJECTED = "rejected"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
@@ -799,3 +810,40 @@ class ArtifactRef(TimestampMixin, Base):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     checksum: Mapped[str] = mapped_column(String(64), nullable=False)
     retention_policy: Mapped[str | None] = mapped_column(String(100))
+
+
+class MergeReview(TimestampMixin, Base):
+    __tablename__ = "merge_reviews"
+    __table_args__ = (
+        Index("ix_merge_reviews_local_user_id", "local_user_id"),
+        Index("ix_merge_reviews_attempt_id", "task_attempt_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("project_repositories.id"), nullable=False
+    )
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), nullable=False)
+    task_attempt_id: Mapped[str] = mapped_column(ForeignKey("task_attempts.id"), nullable=False)
+    git_worktree_id: Mapped[str] = mapped_column(ForeignKey("git_worktrees.id"), nullable=False)
+    status: Mapped[MergeReviewStatus] = mapped_column(
+        enum_column(MergeReviewStatus), nullable=False
+    )
+    review_summary: Mapped[str | None] = mapped_column(Text)
+    base_branch: Mapped[str] = mapped_column(String(300), nullable=False)
+    base_commit_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_branch: Mapped[str] = mapped_column(String(300), nullable=False)
+    result_commit_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    merge_commit_sha: Mapped[str | None] = mapped_column(String(64))
+    diff_artifact_id: Mapped[str | None] = mapped_column(ForeignKey("artifact_refs.id"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_by_session_id: Mapped[str | None] = mapped_column(ForeignKey("sessions.id"))
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)

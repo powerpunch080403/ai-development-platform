@@ -33,3 +33,5 @@ Message, Tool arguments, error와 Audit metadata에는 token, credential, 환경
 Worker capability, claim, lease, Task instructions와 result summary는 local runtime DB 데이터다. 실제 Worker process log, 사용자 파일, worktree와 artifact를 source repository에 만들거나 commit하지 않는다.
 
 Worktree와 artifact는 반드시 app data의 ignored `worktrees/`, `artifacts/` 아래에 둔다. SQLite에는 artifact 상대 경로, 크기와 checksum만 저장한다. 테스트 commit은 시스템 임시 Git repository의 작업 branch에서만 만든다.
+
+Squash merge 테스트도 시스템 임시 repository에서만 수행한다. 구현 source repository에는 테스트 branch/commit을 만들지 않으며 merge API는 remote fetch/push를 호출하지 않는다.

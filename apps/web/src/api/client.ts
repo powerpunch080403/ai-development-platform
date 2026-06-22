@@ -15,6 +15,7 @@ import type {
   CreateAgentRunRequest,
   WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto, CreateWorkItemRequest, CreateTaskRequest, RegisterWorkerRequest,
   GitWorktreeDto,WorktreeStatusDto,WorktreeDiffDto,ArtifactRefDto,
+  AttemptReviewDto,PrepareSquashMergeResponse,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -118,3 +119,9 @@ export function getWorktreeDiff(id:string):Promise<WorktreeDiffDto>{return reque
 export function commitWorktree(id:string,message:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/worktrees/${id}/commit-result`,{method:"POST",body:JSON.stringify({commit_message:message})})}
 export function listArtifacts(attemptId:string):Promise<ArtifactRefDto[]>{return request<ArtifactRefDto[]>(`/task-attempts/${attemptId}/artifacts`)}
 export function readArtifact(id:string):Promise<{id:string;text:string}>{return request<{id:string;text:string}>(`/artifacts/${id}/text`)}
+export function listMergeReady():Promise<AttemptReviewDto[]>{return request<AttemptReviewDto[]>("/reviews/merge-ready")}
+export function getReview(id:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/review`)}
+export function approveReview(id:string,summary:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/review/approve`,{method:"POST",body:JSON.stringify({review_summary:summary})})}
+export function rejectReview(id:string,summary:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/review/reject`,{method:"POST",body:JSON.stringify({review_summary:summary})})}
+export function prepareSquash(id:string):Promise<PrepareSquashMergeResponse>{return request<PrepareSquashMergeResponse>(`/task-attempts/${id}/merge/prepare`,{method:"POST"})}
+export function performSquash(id:string,message:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/merge/squash`,{method:"POST",body:JSON.stringify({commit_message:message||undefined})})}

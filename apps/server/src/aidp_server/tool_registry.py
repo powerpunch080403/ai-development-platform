@@ -31,6 +31,11 @@ TOOL_DEFINITIONS = (
     ("artifact.create_ref", "artifact", True, "R1"),
     ("artifact.get_metadata", "artifact", False, "R1"),
     ("artifact.read_text", "artifact", False, "R1"),
+    ("review.get_attempt", "review", False, "R1"),
+    ("review.approve", "review", True, "R3"),
+    ("review.reject", "review", True, "R2"),
+    ("merge.prepare_squash", "merge", False, "R3"),
+    ("merge.perform_squash", "merge", True, "R3"),
 )
 
 

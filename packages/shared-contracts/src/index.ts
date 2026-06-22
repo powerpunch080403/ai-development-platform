@@ -106,3 +106,5 @@ export type GitWorktreeDto={id:string;task_attempt_id:string;worktree_path:strin
 export type WorktreeStatusDto={is_dirty:boolean;porcelain:string;status:string};
 export type WorktreeDiffDto={diff:string;truncated:boolean};
 export type ArtifactRefDto={id:string;kind:string;storage_path:string;content_type:string;size_bytes:number;checksum:string;created_at:string};
+export type AttemptReviewDto={task_attempt_id:string;task_id:string;task_title:string;repository_name:string;worktree_id:string;base_branch:string;base_commit_sha:string;result_branch:string;result_commit_sha:string;merge_commit_sha:string|null;review_status:string;diff:string;source_clean:boolean;base_head_matches:boolean;merge_possible:boolean};
+export type PrepareSquashMergeResponse={merge_possible:boolean;source_clean:boolean;base_head_matches:boolean;current_branch:string|null;current_head:string|null};
