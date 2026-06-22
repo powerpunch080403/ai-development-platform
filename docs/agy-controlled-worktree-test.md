@@ -59,3 +59,9 @@ $env:AIDP_RUN_REAL_AGY_TESTS="true"
 
 9. **Complete the Golden Path**
    Proceed manually to review, approve, and squash-merge the result commit using the standard UI actions.
+
+## Opt-in Review/Merge E2E
+
+`test_real_agy_controlled_result_can_be_reviewed_and_squash_merged` verifies the complete controlled result path through Owner review, explicit approval, squash preparation, squash merge and `cleanup_pending`. It creates and targets only a pytest `tmp_path` repository; neither the implementation repository nor a user project is used as the AGY target.
+
+The test is skipped by default and runs only when `AIDP_RUN_REAL_AGY_TESTS`, `AIDP_ENABLE_EXPERIMENTAL_ANTIGRAVITY_CLI`, `AIDP_ANTIGRAVITY_CLI_PATH` and `AIDP_ANTIGRAVITY_CLI_ALLOW_DANGEROUS_SKIP_PERMISSIONS` are explicitly configured. Current background automation requires `--dangerously-skip-permissions`, but the corresponding setting remains `false` by default. AGY creates only the isolated result; Owner review, approval and squash merge remain separate explicit API actions.
