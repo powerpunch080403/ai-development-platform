@@ -46,6 +46,11 @@ TOOL_DEFINITIONS = (
     ("worker_run.list_for_attempt", "worker", False, "R1"),
     ("worker_run.fail", "worker", True, "R2"),
     ("worker_run.cancel", "worker", True, "R2"),
+    ("approval.request", "approval", True, "R2"),
+    ("approval.record_decision", "approval", True, "R3"),
+    ("approval.reject", "approval", True, "R2"),
+    ("policy.evaluate", "policy", False, "R1"),
+    ("policy.record_decision", "policy", True, "R2"),
 )
 
 

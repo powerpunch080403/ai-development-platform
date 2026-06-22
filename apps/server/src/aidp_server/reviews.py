@@ -20,9 +20,20 @@ from aidp_server.db.models import (
     TaskAttempt,
     TaskAttemptStatus,
     TaskStatus,
+    ApprovalStatus,
+    ApprovalRequest,
 )
 from aidp_server.db.session import get_session
 from aidp_server.git_utils import inspect_git_repository, run_git_write
+from aidp_server.policy import evaluate_action, create_policy_decision
+from aidp_server.approvals import (
+    build_approval_fingerprint,
+    create_approval_request,
+    approve_request,
+    reject_request,
+    find_valid_approval_for_merge,
+    mark_stale_if_fingerprint_changed,
+)
 
 
 class SummaryRequest(BaseModel):
@@ -49,6 +60,8 @@ class ReviewView(BaseModel):
     source_clean: bool
     base_head_matches: bool
     merge_possible: bool
+    approval_status: str
+    approval_request_id: str | None
 
 
 class PrepareView(BaseModel):
@@ -57,6 +70,9 @@ class PrepareView(BaseModel):
     base_head_matches: bool
     current_branch: str | None
     current_head: str | None
+    approval_status: str
+    policy_decision: str
+    risk_level: str
 
 
 router = APIRouter(tags=["owner review and squash merge"])
@@ -87,39 +103,49 @@ def git(path: Path, *args: str) -> str:
     return r.stdout
 
 
-def checks(repo: ProjectRepository, w: GitWorktree) -> PrepareView:
+def checks(repo: ProjectRepository, w: GitWorktree) -> tuple[bool, bool, bool, str | None, str | None]:
     s = inspect_git_repository(repo.repository_path)
     clean = s.is_git_repository and not s.error_code and not s.is_dirty
     matches = s.last_commit_sha == w.base_commit_sha and s.current_branch == w.base_branch
-    return PrepareView(
-        merge_possible=bool(clean and matches and w.result_commit_sha),
-        source_clean=bool(clean),
-        base_head_matches=matches,
-        current_branch=s.current_branch,
-        current_head=s.last_commit_sha,
-    )
+    merge_possible = bool(clean and matches and w.result_commit_sha)
+    return merge_possible, bool(clean), matches, s.current_branch, s.last_commit_sha
 
 
-def review_row(session: Session, a: TaskAttempt, w: GitWorktree) -> MergeReview | None:
-    return session.scalar(
-        select(MergeReview)
-        .where(MergeReview.task_attempt_id == a.id)
-        .order_by(MergeReview.created_at.desc())
-    )
+def get_current_approval(session: Session, attempt_id: str, fingerprint: str) -> ApprovalRequest | None:
+    reqs = session.scalars(
+        select(ApprovalRequest).where(
+            ApprovalRequest.task_attempt_id == attempt_id,
+            ApprovalRequest.action_type == "merge.perform_squash"
+        ).order_by(ApprovalRequest.created_at.desc())
+    ).all()
+    if not reqs:
+        return None
+    req = reqs[0]
+    if req.approval_fingerprint != fingerprint and req.status in (ApprovalStatus.PENDING, ApprovalStatus.APPROVED):
+        req.status = ApprovalStatus.STALE
+        req.stale_at = datetime.now(timezone.utc)
+        session.commit()
+    return req
 
 
 def detail(
-    session: Session, a: TaskAttempt, task: Task, w: GitWorktree, repo: ProjectRepository
+    session: Session, current: CurrentAuth, a: TaskAttempt, task: Task, w: GitWorktree, repo: ProjectRepository
 ) -> ReviewView:
-    c = checks(repo, w)
-    r = review_row(session, a, w)
+    merge_possible, source_clean, base_head_matches, current_branch, current_head = checks(repo, w)
+    r = session.scalar(
+        select(MergeReview).where(MergeReview.task_attempt_id == a.id).order_by(MergeReview.created_at.desc())
+    )
+    
+    fp = build_approval_fingerprint(
+        "merge.perform_squash", current.user.id, a.project_id, w.repository_id,
+        a.task_id, a.id, w.id, w.base_branch, current_head or w.base_commit_sha,
+        w.branch_name, w.result_commit_sha, "R3"
+    )
+    ar = get_current_approval(session, a.id, fp)
+    app_status = ar.status.value if ar else ApprovalStatus.PENDING.value
+    
     d = (
-        git(
-            Path(repo.repository_path),
-            "diff",
-            f"{w.base_commit_sha}..{w.result_commit_sha}",
-            "--binary",
-        )
+        git(Path(repo.repository_path), "diff", f"{w.base_commit_sha}..{w.result_commit_sha}", "--binary")
         if w.result_commit_sha
         else ""
     )
@@ -136,9 +162,11 @@ def detail(
         merge_commit_sha=r.merge_commit_sha if r else None,
         review_status=r.status.value if r else "created",
         diff=d[:MAX_DIFF],
-        source_clean=c.source_clean,
-        base_head_matches=c.base_head_matches,
-        merge_possible=c.merge_possible,
+        source_clean=source_clean,
+        base_head_matches=base_head_matches,
+        merge_possible=merge_possible,
+        approval_status=app_status,
+        approval_request_id=ar.id if ar else None,
     )
 
 
@@ -190,7 +218,7 @@ def ready(
     ):
         try:
             x = bundle(session, a.id, current.user.id)
-            out.append(detail(session, *x))
+            out.append(detail(session, current, *x))
         except HTTPException:
             continue
     return out
@@ -200,7 +228,7 @@ def ready(
 def get_review(
     aid: str, current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
 ) -> ReviewView:
-    return detail(session, *bundle(session, aid, current.user.id))
+    return detail(session, current, *bundle(session, aid, current.user.id))
 
 
 @router.post("/task-attempts/{aid}/review/approve", response_model=ReviewView)
@@ -212,13 +240,52 @@ def approve(
 ) -> ReviewView:
     a, t, w, repo = bundle(session, aid, current.user.id)
     ensure_committed(a, w)
-    r = review_row(session, a, w) or new_review(
-        session, current, a, w, MergeReviewStatus.CREATED, None
-    )
+    r = session.scalar(select(MergeReview).where(MergeReview.task_attempt_id == a.id).order_by(MergeReview.created_at.desc()))
+    r = r or new_review(session, current, a, w, MergeReviewStatus.CREATED, None)
+    
     r.status = MergeReviewStatus.APPROVED
     r.review_summary = request.review_summary
     r.approved_at = datetime.now(timezone.utc)
     r.approved_by_session_id = current.runtime_session.id
+    
+    fp = build_approval_fingerprint(
+        "merge.perform_squash", current.user.id, a.project_id, w.repository_id,
+        a.task_id, a.id, w.id, w.base_branch, w.base_commit_sha,
+        w.branch_name, w.result_commit_sha, "R3"
+    )
+    
+    ar = get_current_approval(session, a.id, fp)
+    if not ar or ar.status != ApprovalStatus.PENDING:
+        ar = create_approval_request(
+            session=session,
+            local_user_id=current.user.id,
+            action_type="merge.perform_squash",
+            risk_level="R3",
+            title=f"Approve squash merge for {t.title}",
+            approval_fingerprint=fp,
+            project_id=a.project_id,
+            repository_id=w.repository_id,
+            task_id=a.task_id,
+            task_attempt_id=a.id,
+            git_worktree_id=w.id,
+            merge_review_id=r.id,
+            requested_by_session_id=current.runtime_session.id,
+        )
+    
+    approve_request(session, ar, current.runtime_session.id)
+    
+    create_policy_decision(
+        session=session,
+        local_user_id=current.user.id,
+        action_type="review.approve",
+        session_id=current.runtime_session.id,
+        project_id=a.project_id,
+        repository_id=w.repository_id,
+        task_id=a.task_id,
+        task_attempt_id=a.id,
+        approval_request_id=ar.id,
+    )
+    
     record_audit_event(
         session,
         event_type="review.approved",
@@ -227,10 +294,10 @@ def approve(
         project_id=a.project_id,
         repository_id=w.repository_id,
         agent_run_id=None,
-        metadata={"attempt_id": a.id, "review_id": r.id},
+        metadata={"attempt_id": a.id, "review_id": r.id, "approval_request_id": ar.id},
     )
     session.commit()
-    return detail(session, a, t, w, repo)
+    return detail(session, current, a, t, w, repo)
 
 
 @router.post("/task-attempts/{aid}/review/reject", response_model=ReviewView)
@@ -242,15 +309,25 @@ def reject(
 ) -> ReviewView:
     a, t, w, repo = bundle(session, aid, current.user.id)
     ensure_committed(a, w)
-    r = review_row(session, a, w) or new_review(
-        session, current, a, w, MergeReviewStatus.CREATED, None
-    )
+    r = session.scalar(select(MergeReview).where(MergeReview.task_attempt_id == a.id).order_by(MergeReview.created_at.desc()))
+    r = r or new_review(session, current, a, w, MergeReviewStatus.CREATED, None)
+    
     r.status = MergeReviewStatus.REJECTED
     r.review_summary = request.review_summary
     r.rejected_at = datetime.now(timezone.utc)
     a.status = TaskAttemptStatus.REJECTED
     t.status = TaskStatus.CHANGES_REQUESTED
     w.status = GitWorktreeStatus.REVIEWING
+    
+    reqs = session.scalars(
+        select(ApprovalRequest).where(
+            ApprovalRequest.task_attempt_id == a.id,
+            ApprovalRequest.status.in_([ApprovalStatus.PENDING, ApprovalStatus.APPROVED]),
+        )
+    ).all()
+    for ar in reqs:
+        reject_request(session, ar, current.runtime_session.id)
+        
     record_audit_event(
         session,
         event_type="review.rejected",
@@ -261,7 +338,7 @@ def reject(
         metadata={"attempt_id": a.id},
     )
     session.commit()
-    return detail(session, a, t, w, repo)
+    return detail(session, current, a, t, w, repo)
 
 
 @router.post("/task-attempts/{aid}/merge/prepare", response_model=PrepareView)
@@ -270,11 +347,23 @@ def prepare(
 ) -> PrepareView:
     a, t, w, repo = bundle(session, aid, current.user.id)
     ensure_committed(a, w)
-    c = checks(repo, w)
-    if not c.source_clean:
+    merge_possible, source_clean, base_head_matches, current_branch, current_head = checks(repo, w)
+    
+    decision, risk_level = evaluate_action("merge.perform_squash")
+    
+    fp = build_approval_fingerprint(
+        "merge.perform_squash", current.user.id, a.project_id, w.repository_id,
+        a.task_id, a.id, w.id, w.base_branch, current_head or w.base_commit_sha,
+        w.branch_name, w.result_commit_sha, "R3"
+    )
+    ar = get_current_approval(session, a.id, fp)
+    app_status = ar.status.value if ar else ApprovalStatus.PENDING.value
+    
+    if not source_clean:
         raise HTTPException(status_code=409, detail="Source repository is dirty")
-    if not c.base_head_matches:
+    if not base_head_matches:
         raise HTTPException(status_code=409, detail="Base commit is stale")
+        
     record_audit_event(
         session,
         event_type="merge.prepared",
@@ -282,10 +371,20 @@ def prepare(
         local_user_id=current.user.id,
         project_id=a.project_id,
         repository_id=w.repository_id,
-        metadata={"attempt_id": a.id},
+        metadata={"attempt_id": a.id, "approval_status": app_status},
     )
     session.commit()
-    return c
+    
+    return PrepareView(
+        merge_possible=merge_possible,
+        source_clean=source_clean,
+        base_head_matches=base_head_matches,
+        current_branch=current_branch,
+        current_head=current_head,
+        approval_status=app_status,
+        policy_decision=decision.value,
+        risk_level=risk_level.value,
+    )
 
 
 @router.post("/task-attempts/{aid}/merge/squash", response_model=ReviewView)
@@ -298,14 +397,42 @@ def squash(
 ) -> ReviewView:
     a, t, w, repo = bundle(session, aid, current.user.id)
     ensure_committed(a, w)
-    r = review_row(session, a, w)
+    r = session.scalar(select(MergeReview).where(MergeReview.task_attempt_id == a.id).order_by(MergeReview.created_at.desc()))
     if not r or r.status not in {MergeReviewStatus.APPROVED, MergeReviewStatus.MERGE_PREPARED}:
         raise HTTPException(status_code=409, detail="Explicit approval is required")
-    c = checks(repo, w)
-    if not c.source_clean:
+        
+    merge_possible, source_clean, base_head_matches, current_branch, current_head = checks(repo, w)
+        
+    decision, risk_level = evaluate_action("merge.perform_squash")
+    
+    fp = build_approval_fingerprint(
+        "merge.perform_squash", current.user.id, a.project_id, w.repository_id,
+        a.task_id, a.id, w.id, w.base_branch, current_head or w.base_commit_sha,
+        w.branch_name, w.result_commit_sha, "R3"
+    )
+    
+    ar = find_valid_approval_for_merge(session, fp)
+    if not ar:
+        mark_stale_if_fingerprint_changed(session, a.id, fp)
+        session.commit()
+        raise HTTPException(status_code=409, detail="Valid approval request not found or stale")
+        
+    if not source_clean:
         raise HTTPException(status_code=409, detail="Source repository is dirty")
-    if not c.base_head_matches:
+    if not base_head_matches:
         raise HTTPException(status_code=409, detail="Base commit is stale")
+        
+    create_policy_decision(
+        session=session,
+        local_user_id=current.user.id,
+        action_type="merge.perform_squash",
+        session_id=current.runtime_session.id,
+        project_id=a.project_id,
+        repository_id=w.repository_id,
+        task_id=a.task_id,
+        task_attempt_id=a.id,
+    )
+        
     path = Path(repo.repository_path)
     message = (
         request.commit_message or f"{t.title}\n\nSquash merge result from task attempt {a.id}."
@@ -318,12 +445,15 @@ def squash(
         r.error_message = merge.stderr
         session.commit()
         raise HTTPException(status_code=422, detail=merge.stderr.strip())
+        
     commit = run_git_write(path, "commit", "-m", message)
     if commit.returncode:
         run_git_write(path, "reset", "--merge", w.base_commit_sha or "HEAD")
         raise HTTPException(status_code=422, detail=commit.stderr.strip())
+        
     sha = git(path, "rev-parse", "HEAD").strip()
     log = git(path, "show", "--stat", "--oneline", sha)
+    
     create_text_artifact(
         session,
         settings,
@@ -336,6 +466,7 @@ def squash(
         attempt_id=a.id,
         worker_id=w.worker_id,
     )
+    
     now = datetime.now(timezone.utc)
     r.status = MergeReviewStatus.MERGED
     r.merge_commit_sha = sha
@@ -343,6 +474,7 @@ def squash(
     a.status = TaskAttemptStatus.MERGED
     t.status = TaskStatus.COMPLETED
     w.status = GitWorktreeStatus.CLEANUP_PENDING
+    
     record_audit_event(
         session,
         event_type="merge.squash_completed",
@@ -350,7 +482,8 @@ def squash(
         local_user_id=current.user.id,
         project_id=a.project_id,
         repository_id=w.repository_id,
-        metadata={"attempt_id": a.id, "merge_commit": sha},
+        metadata={"attempt_id": a.id, "merge_commit": sha, "approval_request_id": ar.id},
     )
     session.commit()
-    return detail(session, a, t, w, repo)
+    return detail(session, current, a, t, w, repo)
+

@@ -266,6 +266,21 @@ class MergeReviewStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class ApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    STALE = "stale"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
+class PolicyDecisionResult(StrEnum):
+    ALLOW = "allow"
+    APPROVAL_REQUIRED = "approval_required"
+    DENY = "deny"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
@@ -877,3 +892,67 @@ class MergeReview(TimestampMixin, Base):
     approved_by_session_id: Mapped[str | None] = mapped_column(ForeignKey("sessions.id"))
     error_code: Mapped[str | None] = mapped_column(String(100))
     error_message: Mapped[str | None] = mapped_column(Text)
+
+
+class ApprovalRequest(TimestampMixin, Base):
+    __tablename__ = "approval_requests"
+    __table_args__ = (
+        Index("ix_approval_requests_local_user_id", "local_user_id"),
+        Index("ix_approval_requests_task_attempt_id", "task_attempt_id"),
+        Index("ix_approval_requests_fingerprint", "approval_fingerprint"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"))
+    repository_id: Mapped[str | None] = mapped_column(ForeignKey("project_repositories.id"))
+    conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id"))
+    agent_run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"))
+    tool_call_id: Mapped[str | None] = mapped_column(ForeignKey("tool_calls.id"))
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"))
+    task_attempt_id: Mapped[str | None] = mapped_column(ForeignKey("task_attempts.id"))
+    git_worktree_id: Mapped[str | None] = mapped_column(ForeignKey("git_worktrees.id"))
+    merge_review_id: Mapped[str | None] = mapped_column(ForeignKey("merge_reviews.id"))
+    action_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    risk_level: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[ApprovalStatus] = mapped_column(
+        enum_column(ApprovalStatus), nullable=False, default=ApprovalStatus.PENDING
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    scope_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    arguments_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    approval_fingerprint: Mapped[str] = mapped_column(String(255), nullable=False)
+    requested_by_session_id: Mapped[str | None] = mapped_column(ForeignKey("sessions.id"))
+    decided_by_session_id: Mapped[str | None] = mapped_column(ForeignKey("sessions.id"))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stale_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+
+class PolicyDecision(TimestampMixin, Base):
+    __tablename__ = "policy_decisions"
+    __table_args__ = (
+        Index("ix_policy_decisions_local_user_id", "local_user_id"),
+        Index("ix_policy_decisions_task_attempt_id", "task_attempt_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str | None] = mapped_column(ForeignKey("local_users.id"))
+    session_id: Mapped[str | None] = mapped_column(ForeignKey("sessions.id"))
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"))
+    repository_id: Mapped[str | None] = mapped_column(ForeignKey("project_repositories.id"))
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"))
+    task_attempt_id: Mapped[str | None] = mapped_column(ForeignKey("task_attempts.id"))
+    tool_call_id: Mapped[str | None] = mapped_column(ForeignKey("tool_calls.id"))
+    approval_request_id: Mapped[str | None] = mapped_column(ForeignKey("approval_requests.id"))
+    action_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    risk_level: Mapped[str] = mapped_column(String(20), nullable=False)
+    decision: Mapped[PolicyDecisionResult] = mapped_column(
+        enum_column(PolicyDecisionResult), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    context_json: Mapped[dict[str, object] | None] = mapped_column(JSON)

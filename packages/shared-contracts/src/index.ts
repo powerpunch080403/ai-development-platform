@@ -109,11 +109,14 @@ export type GitWorktreeDto={id:string;task_attempt_id:string;worktree_path:strin
 export type WorktreeStatusDto={is_dirty:boolean;porcelain:string;status:string};
 export type WorktreeDiffDto={diff:string;truncated:boolean};
 export type ArtifactRefDto={id:string;kind:string;storage_path:string;content_type:string;size_bytes:number;checksum:string;created_at:string};
-export type AttemptReviewDto={task_attempt_id:string;task_id:string;task_title:string;repository_name:string;worktree_id:string;base_branch:string;base_commit_sha:string;result_branch:string;result_commit_sha:string;merge_commit_sha:string|null;review_status:string;diff:string;source_clean:boolean;base_head_matches:boolean;merge_possible:boolean};
-export type PrepareSquashMergeResponse={merge_possible:boolean;source_clean:boolean;base_head_matches:boolean;current_branch:string|null;current_head:string|null};
+export type AttemptReviewDto={task_attempt_id:string;task_id:string;task_title:string;repository_name:string;worktree_id:string;base_branch:string;base_commit_sha:string;result_branch:string;result_commit_sha:string;merge_commit_sha:string|null;review_status:string;diff:string;source_clean:boolean;base_head_matches:boolean;merge_possible:boolean;approval_status:string;approval_request_id:string|null};
+export type PrepareSquashMergeResponse={merge_possible:boolean;source_clean:boolean;base_head_matches:boolean;current_branch:string|null;current_head:string|null;approval_status:string;policy_decision:string;risk_level:string};
 export type StartManualWorkerRequest = { notes?: string };
 export type StartManualWorkerResponse = { worker_run: WorkerRunDto; worktree: GitWorktreeDto; task: TaskDto };
 export type SubmitManualWorkerRequest = { commit_message?: string; result_summary?: string };
 export type SubmitManualWorkerResponse = { worker_run: WorkerRunDto; artifact_id?: string; result_commit_sha?: string; status: string };
 export type FailWorkerRunRequest = { error_message: string; error_code?: string };
 export type CancelWorkerRunRequest = { reason?: string };
+
+export type ApprovalRequestDto = { id:string; local_user_id:string; project_id:string|null; repository_id:string|null; task_attempt_id:string|null; action_type:string; risk_level:string; status:string; title:string; description:string|null; created_at:string; decided_at:string|null };
+export type PolicyDecisionDto = { id:string; local_user_id:string|null; action_type:string; risk_level:string; decision:string; reason:string; created_at:string };
