@@ -14,6 +14,8 @@ $env:AIDP_RUN_REAL_AGY_TESTS="true"
 
 *Note: The `--dangerously-skip-permissions` flag is intentionally left out by default unless you explicitly enable `AIDP_ANTIGRAVITY_CLI_ALLOW_DANGEROUS_SKIP_PERMISSIONS=true`.*
 
+*Note: The Process Runner explicitly closes `stdin` (redirects to `DEVNULL`) for all background workers. This prevents CLIs like `agy` from hanging indefinitely while waiting for interactive input in non-interactive pipeline environments.*
+
 ## Verification Steps
 
 1. **Create Test Repository**

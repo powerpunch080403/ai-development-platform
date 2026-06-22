@@ -26,6 +26,7 @@
 - `shell=True` 없이 인자 배열 기반으로만 실행한다.
 - 허용된 Working Directory (저장소 혹은 워크트리 경로) 내에서만 실행을 허가한다.
 - timeout 및 stdout/stderr 아티팩트 저장을 지원한다.
+- **백그라운드 워커(CLI 도구 포함) 실행 시 입력 대기로 인한 무한 멈춤(Block)을 방지하기 위해 `stdin`을 `DEVNULL`로 강제 연결(닫음)한다. 대화형 입력은 지원하지 않는다.**
 - Process Runner는 `os.environ` 전체를 상속하지 않고 기본 env allowlist만 전달한다.
 - TOKEN/API_KEY/SECRET/PASSWORD 등 민감 key는 차단한다.
 - 출력 redaction(마스킹)은 보조 방어일 뿐이며 env allowlist가 1차 방어다.

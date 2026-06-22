@@ -40,6 +40,8 @@ class ExternalCliRunResult(BaseModel):
     stderr_artifact_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    files_modified: bool | None = None
+    result_commit_created: bool | None = None
 
 
 def get_owned_attempt(session: Session, attempt_id: str, user_id: str) -> TaskAttempt:

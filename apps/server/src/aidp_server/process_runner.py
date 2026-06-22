@@ -115,6 +115,7 @@ async def execute_process_async(
             env=safe_env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
         )
 
         try:

@@ -171,3 +171,60 @@ def test_process_runner_does_not_leak_env(app_harness: AppHarness):
     # Cleanup
     del os.environ["SUPER_SECRET_DB_PASS"]
 
+
+def test_process_runner_stdin_is_devnull(app_harness: AppHarness):
+    import asyncio
+    import sys
+    from aidp_server.process_runner import execute_process_async
+    from test_worktrees import auth
+    
+    auth(app_harness)
+    
+    # Create project & repo for scope via API
+    repo_dir = app_harness.settings.app_data_dir / "testrepo_stdin"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    import subprocess
+    subprocess.run(["git", "init"], cwd=repo_dir, check=True)
+    
+    resp = app_harness.client.post("/projects", json={"name": "stdin test project"})
+    project_id = resp.json()["id"]
+    
+    resp = app_harness.client.post(
+        f"/projects/{project_id}/repositories",
+        json={"repository_path": str(repo_dir)}
+    )
+    repo_id = resp.json()["id"]
+
+    script = repo_dir / "stdin_probe.py"
+    script.write_text(
+        "import sys\n"
+        "data = sys.stdin.read()\n"
+        "print('stdin_len=' + str(len(data)))\n",
+        encoding="utf-8",
+    )
+    
+    with app_harness.session_factory() as session:
+        args = ["stdin_probe.py"]
+    
+        run_record = asyncio.run(execute_process_async(
+            session=session,
+            settings=app_harness.settings,
+            executable=sys.executable,
+            arguments=args,
+            working_directory=str(repo_dir),
+            timeout_seconds=5,
+            repository_id=repo_id,
+        ))
+        
+        assert run_record.status.value == "succeeded"
+        assert run_record.exit_code == 0
+        
+        from aidp_server.db.models import ArtifactRef
+        from aidp_server.artifacts import read_text_artifact
+        
+        stdout_art = session.get(ArtifactRef, run_record.stdout_artifact_id)
+        assert stdout_art is not None
+        
+        content = read_text_artifact(stdout_art, app_harness.settings)
+        assert "stdin_len=0" in content
+
