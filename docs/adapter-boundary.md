@@ -40,6 +40,7 @@
 - `TaskAttempt` 및 Worker/Process Run 간의 연결, Context Package 아티팩트의 생성 및 저장이 검증되었다.
 - 실제 동작(파일 변경, 결과 Commit 생성 등)은 Dry-run 범위를 벗어나며, 후속 단계에서 다루게 된다.
 - 주요 Adapter 실행 API (Mock, Manual, Dry Run 등)는 실행 전 중앙 `ACTION_CATALOG`의 정책을 평가하고 `policy_decisions` 기록을 남긴다.
+- **Active Run Guard**: External CLI 계열 WorkerRun은 같은 `TaskAttempt` 내에서 활성화 상태(`created`, `running`)의 중복 실행이 차단된다. 완료, 실패, 취소 후에는 재시도 가능하며 이 안전장치는 향후 실제 Codex/Antigravity CLI 어댑터에서도 공통으로 재사용된다.
 
 ## Write scope boundary
 

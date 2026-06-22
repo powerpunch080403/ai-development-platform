@@ -51,6 +51,9 @@ async def execute_external_cli_dry_run(
         task_id=attempt.task_id, task_attempt_id=attempt.id
     )
 
+    from aidp_server.adapters.external_cli_runs import assert_no_active_external_cli_worker_run
+    assert_no_active_external_cli_worker_run(session, attempt.id)
+
     worker_run = WorkerRun(
         local_user_id=local_user_id,
         project_id=attempt.project_id,
