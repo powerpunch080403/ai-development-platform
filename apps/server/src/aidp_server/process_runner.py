@@ -61,6 +61,7 @@ async def execute_process_async(
     worker_run_id: str | None = None,
     tool_call_id: str | None = None,
     worktree_id: str | None = None,
+    environment: dict[str, str] | None = None,
 ) -> ProcessRun:
     
     # 1. Scope Validation
@@ -104,10 +105,14 @@ async def execute_process_async(
     # 3. Execute
     start_time = asyncio.get_running_loop().time()
     try:
+        from aidp_server.process_environment import build_process_environment
+        safe_env = build_process_environment(environment)
+        
         process = await asyncio.create_subprocess_exec(
             executable,
             *arguments,
             cwd=working_directory,
+            env=safe_env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

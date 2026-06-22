@@ -26,7 +26,10 @@
 - `shell=True` 없이 인자 배열 기반으로만 실행한다.
 - 허용된 Working Directory (저장소 혹은 워크트리 경로) 내에서만 실행을 허가한다.
 - timeout 및 stdout/stderr 아티팩트 저장을 지원한다.
-- API 키 등 민감정보 마스킹(Redaction)을 수행한다.
+- Process Runner는 `os.environ` 전체를 상속하지 않고 기본 env allowlist만 전달한다.
+- TOKEN/API_KEY/SECRET/PASSWORD 등 민감 key는 차단한다.
+- 출력 redaction(마스킹)은 보조 방어일 뿐이며 env allowlist가 1차 방어다.
+- 실제 Codex/Antigravity credential injection은 아직 구현하지 않았으며, adapter별 credential boundary는 후속 설계 대상이다.
 - **아직 실제 Codex/Antigravity CLI를 실행하지 않으며, 임의 명령어 실행 UI도 존재하지 않는다.**
 
 ## External CLI Adapter Contract Baseline
