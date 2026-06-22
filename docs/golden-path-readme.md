@@ -29,6 +29,7 @@ pnpm -C apps/web dev
 8. Review-ready 목록에서 Attempt를 선택하고 diff와 artifact를 확인한다.
 9. Approve를 누른 뒤 Prepare merge로 source clean/base HEAD 조건을 확인한다.
 10. Squash merge를 누른다. Local default/base branch에 단일 squash commit이 생성된다.
+11. Cleanup Worktree를 눌러 app-managed Worktree를 제거한다.
 
 Remote fetch/push는 수행하지 않는다. Source repository가 dirty하거나 HEAD가 Worktree 생성 당시 base에서 바뀌었으면 merge는 `409`로 차단된다.
 
@@ -46,7 +47,7 @@ uv run pytest tests/test_golden_path_readme_e2e.py
 ```text
 Task: draft → running → waiting_for_review → completed
 TaskAttempt: created → running_worker → committed → merged
-GitWorktree: ready → dirty_result → committed → merged
+GitWorktree: ready → dirty_result → committed → cleanup_pending → cleaned
 Worker: available → claimed → available
 ```
 
@@ -57,7 +58,7 @@ Artifact 파일은 app data `artifacts/<attempt-id>/` 아래에 있고 SQLite에
 - 실제 Worker process와 Mock/Manual Adapter 정식 구현
 - Codex/Antigravity CLI Adapter
 - Remote Test Runner
-- Worktree 자동 cleanup
+- Force cleanup과 cleanup background scheduler
 - 전체 Approval Policy Engine과 Owner Grant
 - Team Mode, 중앙 Approval Group과 merge queue
 - Desktop App Shell

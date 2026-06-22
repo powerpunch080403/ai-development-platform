@@ -37,3 +37,5 @@ Worktree와 artifact는 반드시 app data의 ignored `worktrees/`, `artifacts/`
 Squash merge 테스트도 시스템 임시 repository에서만 수행한다. 구현 source repository에는 테스트 branch/commit을 만들지 않으며 merge API는 remote fetch/push를 호출하지 않는다.
 
 Golden Path E2E는 구현 repository HEAD를 시작과 종료 시 비교한다. 테스트 DB, 임시 repository, worktree와 artifact는 pytest 임시 디렉터리에만 생성하며 source Git status에 포함하지 않는다.
+
+Cleanup은 configured app-data Worktree root 아래의 Git-registered path만 제거한다. Source repository, app-data root, artifacts와 SQLite records에는 recursive delete를 수행하지 않는다.

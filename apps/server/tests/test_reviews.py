@@ -55,7 +55,7 @@ def test_review_prepare_approve_and_squash(app_harness: AppHarness, tmp_path: Pa
         r = s.query(MergeReview).filter_by(task_attempt_id=aid).one()
         assert a and a.status.value == "merged"
         assert t and t.status.value == "completed"
-        assert w and w.status.value == "merged"
+        assert w and w.status.value == "cleanup_pending"
         assert r.merge_commit_sha == sha
     artifacts = app_harness.client.get(f"/task-attempts/{aid}/artifacts").json()
     assert any(v["kind"] == "generated_report" for v in artifacts)

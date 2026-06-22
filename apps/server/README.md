@@ -104,7 +104,9 @@ Work Item 기본 status는 `active`, Task는 `draft`, Attempt는 `created`다. A
 
 Claimed Attempt는 `POST /task-attempts/{id}/worktree`로 격리 worktree를 만들 수 있다. 원본 repository dirty 상태는 `409`로 차단한다. Worktree status/diff 조회 후 `POST /worktrees/{id}/commit-result`가 작업 branch에만 자동 commit하고 Attempt를 `committed`, Task를 `waiting_for_review`로 바꾼다. Diff patch, pre-commit status와 commit log는 app data artifact 파일로 저장한다.
 
-Committed Attempt는 review-ready 목록과 상세 diff로 조회한다. Approve는 session 기반 사용자 승인 기록만 만들고 merge하지 않는다. Prepare와 squash 시 source clean, current branch와 base HEAD를 다시 확인하며 stale/dirty는 `409`다. 승인 후에만 `merge --squash`와 단일 local commit을 수행하고 Attempt/Worktree를 `merged`, Task를 `completed`로 바꾼다. Remote push는 없다.
+Committed Attempt는 review-ready 목록과 상세 diff로 조회한다. Approve는 session 기반 사용자 승인 기록만 만들고 merge하지 않는다. Prepare와 squash 시 source clean, current branch와 base HEAD를 다시 확인하며 stale/dirty는 `409`다. 승인 후에만 `merge --squash`와 단일 local commit을 수행하고 Attempt를 `merged`, Worktree를 `cleanup_pending`, Task를 `completed`로 바꾼다. Remote push는 없다.
+
+Merge 후 Worktree는 `cleanup_pending`이다. `GET /worktrees/cleanup-pending`과 `POST /worktrees/{id}/cleanup`은 app data Worktree root, symlink 여부, source path 비중첩, filesystem과 `git worktree list --porcelain` 일치를 검사한다. 성공 시 `cleaned`와 `cleanup_at`을 기록한다. Artifacts, source repository와 DB row는 유지하며 force cleanup은 거절한다.
 
 전체 README 수정 회귀 테스트:
 

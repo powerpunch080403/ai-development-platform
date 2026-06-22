@@ -36,6 +36,8 @@ TOOL_DEFINITIONS = (
     ("review.reject", "review", True, "R2"),
     ("merge.prepare_squash", "merge", False, "R3"),
     ("merge.perform_squash", "merge", True, "R3"),
+    ("worktree.cleanup", "worktree", True, "R2"),
+    ("worktree.list_cleanup_pending", "worktree", False, "R1"),
 )
 
 

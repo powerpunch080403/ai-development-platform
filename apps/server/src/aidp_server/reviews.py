@@ -342,7 +342,7 @@ def squash(
     r.merged_at = now
     a.status = TaskAttemptStatus.MERGED
     t.status = TaskStatus.COMPLETED
-    w.status = GitWorktreeStatus.MERGED
+    w.status = GitWorktreeStatus.CLEANUP_PENDING
     record_audit_event(
         session,
         event_type="merge.squash_completed",

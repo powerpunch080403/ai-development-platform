@@ -125,3 +125,5 @@ export function approveReview(id:string,summary:string):Promise<AttemptReviewDto
 export function rejectReview(id:string,summary:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/review/reject`,{method:"POST",body:JSON.stringify({review_summary:summary})})}
 export function prepareSquash(id:string):Promise<PrepareSquashMergeResponse>{return request<PrepareSquashMergeResponse>(`/task-attempts/${id}/merge/prepare`,{method:"POST"})}
 export function performSquash(id:string,message:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/merge/squash`,{method:"POST",body:JSON.stringify({commit_message:message||undefined})})}
+export function listCleanupPending():Promise<GitWorktreeDto[]>{return request<GitWorktreeDto[]>("/worktrees/cleanup-pending")}
+export function cleanupWorktree(id:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/worktrees/${id}/cleanup`,{method:"POST",body:JSON.stringify({force:false})})}

@@ -144,14 +144,32 @@ def test_readme_edit_golden_path_end_to_end(app_harness: AppHarness, tmp_path: P
     )
     assert app_harness.client.get(f"/tasks/{task['id']}").json()["status"] == "completed"
     assert app_harness.client.get(f"/task-attempts/{attempt['id']}").json()["status"] == "merged"
-    assert app_harness.client.get(f"/worktrees/{worktree['id']}").json()["status"] == "merged"
-    assert app_harness.client.get(f"/task-attempts/{attempt['id']}/artifacts").json()
+    assert (
+        app_harness.client.get(f"/worktrees/{worktree['id']}").json()["status"] == "cleanup_pending"
+    )
+    pending = app_harness.client.get("/worktrees/cleanup-pending").json()
+    assert any(item["id"] == worktree["id"] for item in pending)
+    artifacts_after_merge = app_harness.client.get(
+        f"/task-attempts/{attempt['id']}/artifacts"
+    ).json()
+    assert artifacts_after_merge
+    cleaned = app_harness.client.post(f"/worktrees/{worktree['id']}/cleanup", json={"force": False})
+    assert cleaned.status_code == 200
+    assert cleaned.json()["status"] == "cleaned"
+    assert cleaned.json()["cleanup_at"] is not None
+    assert not worktree_path.exists()
+    assert app_harness.client.get("/worktrees/cleanup-pending").json() == []
+    assert (
+        app_harness.client.get(f"/task-attempts/{attempt['id']}/artifacts").json()
+        == artifacts_after_merge
+    )
     audit = app_harness.client.get("/audit-events").json()
     assert {event["event_type"] for event in audit} >= {
         "worktree.created",
         "worktree.result_committed",
         "review.approved",
         "merge.squash_completed",
+        "worktree.cleaned",
     }
 
     implementation_head_after = git(implementation_repo, "rev-parse", "HEAD").stdout.strip()

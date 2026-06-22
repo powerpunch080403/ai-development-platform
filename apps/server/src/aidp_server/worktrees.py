@@ -33,6 +33,7 @@ class WorktreeView(BaseModel):
     base_commit_sha: str | None
     result_commit_sha: str | None
     status: str
+    cleanup_at: datetime | None
 
 
 class StatusView(BaseModel):
@@ -65,6 +66,10 @@ class ArtifactTextView(BaseModel):
     text: str
 
 
+class CleanupRequest(BaseModel):
+    force: bool = False
+
+
 router = APIRouter(tags=["worktrees and artifacts"])
 MAX_DIFF = 1_000_000
 
@@ -86,6 +91,7 @@ def view(v: GitWorktree) -> WorktreeView:
         base_commit_sha=v.base_commit_sha,
         result_commit_sha=v.result_commit_sha,
         status=v.status.value,
+        cleanup_at=v.cleanup_at,
     )
 
 
@@ -198,11 +204,124 @@ def attempt_worktree(
     return view(v)
 
 
+@router.get("/worktrees/cleanup-pending", response_model=list[WorktreeView])
+def cleanup_pending(
+    current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
+) -> list[WorktreeView]:
+    allowed = (
+        GitWorktreeStatus.MERGED,
+        GitWorktreeStatus.ABANDONED,
+        GitWorktreeStatus.FAILED,
+        GitWorktreeStatus.CLEANUP_PENDING,
+    )
+    values = session.scalars(
+        select(GitWorktree)
+        .where(GitWorktree.local_user_id == current.user.id, GitWorktree.status.in_(allowed))
+        .order_by(GitWorktree.created_at)
+    )
+    return [view(value) for value in values]
+
+
 @router.get("/worktrees/{wid}", response_model=WorktreeView)
 def get_worktree(
     wid: str, current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
 ) -> WorktreeView:
     return view(owned(session, GitWorktree, wid, current.user.id))
+
+
+@router.post("/worktrees/{wid}/cleanup", response_model=WorktreeView)
+def cleanup_worktree(
+    wid: str,
+    request: CleanupRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> WorktreeView:
+    worktree = owned(session, GitWorktree, wid, current.user.id)
+    if request.force:
+        raise HTTPException(status_code=400, detail="Force cleanup is not supported")
+    allowed = {
+        GitWorktreeStatus.MERGED,
+        GitWorktreeStatus.ABANDONED,
+        GitWorktreeStatus.FAILED,
+        GitWorktreeStatus.CLEANUP_PENDING,
+    }
+    if worktree.status not in allowed:
+        raise HTTPException(status_code=409, detail="Worktree status is not cleanup eligible")
+    repository = session.get(ProjectRepository, worktree.repository_id)
+    if repository is None or repository.local_user_id != current.user.id:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    worktrees_root, _ = ensure_runtime_dirs(settings)
+    configured_path = Path(worktree.worktree_path)
+    if configured_path.is_symlink():
+        raise HTTPException(status_code=409, detail="Symlink worktree paths cannot be cleaned")
+    target = configured_path.resolve()
+    source = Path(repository.repository_path).resolve()
+    if worktrees_root not in target.parents or target == worktrees_root:
+        raise HTTPException(status_code=409, detail="Worktree path is outside app-managed root")
+    if target == source or source in target.parents:
+        raise HTTPException(status_code=409, detail="Worktree path overlaps source repository")
+
+    listing = run_git_write(source, "worktree", "list", "--porcelain")
+    if listing.returncode:
+        raise HTTPException(
+            status_code=422, detail=listing.stderr.strip() or "Worktree list failed"
+        )
+    registered_paths = {
+        Path(line.removeprefix("worktree ")).resolve()
+        for line in listing.stdout.splitlines()
+        if line.startswith("worktree ")
+    }
+    exists = target.exists()
+    registered = target in registered_paths
+    worktree.status = GitWorktreeStatus.CLEANUP_PENDING
+    session.flush()
+    if exists != registered:
+        worktree.error_code = "worktree_state_mismatch"
+        worktree.error_message = "Filesystem and Git worktree registration do not match"
+        record_audit_event(
+            session,
+            event_type="worktree.cleanup_failed",
+            message="Worktree cleanup state mismatch",
+            local_user_id=current.user.id,
+            project_id=worktree.project_id,
+            repository_id=worktree.repository_id,
+            metadata={"worktree_id": worktree.id},
+        )
+        session.commit()
+        raise HTTPException(status_code=409, detail=worktree.error_message)
+    if registered:
+        removed = run_git_write(source, "worktree", "remove", str(target))
+        if removed.returncode:
+            worktree.error_code = "worktree_remove_failed"
+            worktree.error_message = removed.stderr.strip() or "Git worktree remove failed"
+            record_audit_event(
+                session,
+                event_type="worktree.cleanup_failed",
+                message="Git worktree remove failed",
+                local_user_id=current.user.id,
+                project_id=worktree.project_id,
+                repository_id=worktree.repository_id,
+                metadata={"worktree_id": worktree.id},
+            )
+            session.commit()
+            raise HTTPException(status_code=409, detail=worktree.error_message)
+    worktree.status = GitWorktreeStatus.CLEANED
+    worktree.cleanup_at = datetime.now(timezone.utc)
+    worktree.error_code = None
+    worktree.error_message = None
+    record_audit_event(
+        session,
+        event_type="worktree.cleaned",
+        message="App-managed Git worktree cleaned",
+        local_user_id=current.user.id,
+        project_id=worktree.project_id,
+        repository_id=worktree.repository_id,
+        metadata={"worktree_id": worktree.id},
+    )
+    session.commit()
+    return view(worktree)
 
 
 @router.get("/worktrees/{wid}/status", response_model=StatusView)
@@ -214,7 +333,12 @@ def worktree_status(
     dirty = bool(porcelain)
     if dirty:
         w.status = GitWorktreeStatus.DIRTY_RESULT
-    elif w.status is not GitWorktreeStatus.COMMITTED:
+    elif w.status not in {
+        GitWorktreeStatus.COMMITTED,
+        GitWorktreeStatus.MERGED,
+        GitWorktreeStatus.CLEANUP_PENDING,
+        GitWorktreeStatus.CLEANED,
+    }:
         w.status = GitWorktreeStatus.READY
     session.commit()
     return StatusView(is_dirty=dirty, porcelain=porcelain, status=w.status.value)
