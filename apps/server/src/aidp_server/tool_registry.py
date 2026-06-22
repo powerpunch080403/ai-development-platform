@@ -24,6 +24,13 @@ TOOL_DEFINITIONS = (
     ("worker.heartbeat", "worker", True, "R1"),
     ("worker.release_claim", "worker", True, "R2"),
     ("worker.revoke", "worker", True, "R2"),
+    ("worktree.create", "worktree", True, "R2"),
+    ("worktree.get_status", "worktree", False, "R1"),
+    ("worktree.get_diff", "worktree", False, "R1"),
+    ("worktree.commit_result", "worktree", True, "R2"),
+    ("artifact.create_ref", "artifact", True, "R1"),
+    ("artifact.get_metadata", "artifact", False, "R1"),
+    ("artifact.read_text", "artifact", False, "R1"),
 )
 
 

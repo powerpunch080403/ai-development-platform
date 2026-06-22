@@ -21,6 +21,8 @@ def test_identity_tables_are_registered_in_metadata() -> None:
         "tasks",
         "task_attempts",
         "workers",
+        "git_worktrees",
+        "artifact_refs",
     }.issubset(Base.metadata.tables)
 
 

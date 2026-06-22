@@ -47,6 +47,19 @@ def _run_git(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def run_git_write(path: Path, *args: str, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-c", "core.fsmonitor=false", "-C", str(path), *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        check=False,
+        shell=False,
+    )
+
+
 def inspect_git_repository(repository_path: str | Path) -> GitRepositoryStatus:
     try:
         candidate = Path(repository_path).expanduser().resolve()

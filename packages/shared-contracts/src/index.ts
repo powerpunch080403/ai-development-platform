@@ -102,3 +102,7 @@ export type WorkerDto = { id:string; display_name:string; worker_kind:string; st
 export type CreateWorkItemRequest = { title:string; description?:string; parent_work_item_id?:string; work_item_type:string; priority?:number };
 export type CreateTaskRequest = { title:string; instructions:string; repository_id?:string; work_item_id?:string; risk_level:string; requested_worker_kind?:string };
 export type RegisterWorkerRequest = { display_name:string; worker_kind:string; capabilities?:Record<string,unknown> };
+export type GitWorktreeDto={id:string;task_attempt_id:string;worktree_path:string;branch_name:string;base_branch:string|null;base_commit_sha:string|null;result_commit_sha:string|null;status:string};
+export type WorktreeStatusDto={is_dirty:boolean;porcelain:string;status:string};
+export type WorktreeDiffDto={diff:string;truncated:boolean};
+export type ArtifactRefDto={id:string;kind:string;storage_path:string;content_type:string;size_bytes:number;checksum:string;created_at:string};

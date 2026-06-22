@@ -14,6 +14,7 @@ import type {
   AppendMessageRequest,
   CreateAgentRunRequest,
   WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto, CreateWorkItemRequest, CreateTaskRequest, RegisterWorkerRequest,
+  GitWorktreeDto,WorktreeStatusDto,WorktreeDiffDto,ArtifactRefDto,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -110,3 +111,10 @@ export function heartbeatWorker(id:string):Promise<WorkerDto>{return request<Wor
 export function revokeWorker(id:string):Promise<WorkerDto>{return request<WorkerDto>(`/workers/${id}/revoke`,{method:"POST"})}
 export function claimAttempt(workerId:string,attemptId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/workers/${workerId}/claim`,{method:"POST",body:JSON.stringify({task_attempt_id:attemptId})})}
 export function releaseAttempt(workerId:string,attemptId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/workers/${workerId}/release`,{method:"POST",body:JSON.stringify({task_attempt_id:attemptId,next_status:"created"})})}
+export function createWorktree(attemptId:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/task-attempts/${attemptId}/worktree`,{method:"POST"})}
+export function getWorktree(attemptId:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/task-attempts/${attemptId}/worktree`)}
+export function getWorktreeStatus(id:string):Promise<WorktreeStatusDto>{return request<WorktreeStatusDto>(`/worktrees/${id}/status`)}
+export function getWorktreeDiff(id:string):Promise<WorktreeDiffDto>{return request<WorktreeDiffDto>(`/worktrees/${id}/diff`)}
+export function commitWorktree(id:string,message:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/worktrees/${id}/commit-result`,{method:"POST",body:JSON.stringify({commit_message:message})})}
+export function listArtifacts(attemptId:string):Promise<ArtifactRefDto[]>{return request<ArtifactRefDto[]>(`/task-attempts/${attemptId}/artifacts`)}
+export function readArtifact(id:string):Promise<{id:string;text:string}>{return request<{id:string;text:string}>(`/artifacts/${id}/text`)}

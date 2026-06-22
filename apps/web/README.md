@@ -2,7 +2,7 @@
 
 Desktop App Shell에서 재사용할 수 있는 React/TypeScript/Vite Web UI skeleton이다.
 
-현재는 기존 UI 위에 Work Item과 draft Task 생성, Attempt 생성, Manual Worker 등록, heartbeat/revoke, claim/release와 lease 표시를 포함한다. 실제 Worker process, worktree와 commit은 없다. Session token은 HttpOnly cookie만 사용한다.
+Attempt에서 Worktree 생성, path/branch/base 표시, status/diff 조회, manual result commit과 artifact text 조회를 제공한다. 파일 편집기는 없으며 사용자가 표시된 worktree path에서 직접 수정한다. 기본 branch merge는 하지 않는다.
 
 ## Windows PowerShell
 

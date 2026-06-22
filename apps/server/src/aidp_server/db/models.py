@@ -228,6 +228,33 @@ class WorkerStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class GitWorktreeStatus(StrEnum):
+    PLANNED = "planned"
+    CREATING = "creating"
+    READY = "ready"
+    IN_USE = "in_use"
+    DIRTY_RESULT = "dirty_result"
+    COMMITTED = "committed"
+    REVIEWING = "reviewing"
+    MERGE_READY = "merge_ready"
+    MERGED = "merged"
+    ABANDONED = "abandoned"
+    CLEANUP_PENDING = "cleanup_pending"
+    CLEANED = "cleaned"
+    FAILED = "failed"
+
+
+class ArtifactKind(StrEnum):
+    DIFF_PATCH = "diff_patch"
+    GIT_STATUS = "git_status"
+    COMMIT_LOG = "commit_log"
+    WORKER_REPORT = "worker_report"
+    ERROR_LOG = "error_log"
+    CLI_TRANSCRIPT = "cli_transcript"
+    GENERATED_REPORT = "generated_report"
+    UNKNOWN = "unknown"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
@@ -711,3 +738,64 @@ class TaskAttempt(TimestampMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
+
+
+class GitWorktree(TimestampMixin, Base):
+    __tablename__ = "git_worktrees"
+    __table_args__ = (
+        Index("ix_git_worktrees_repository_id", "repository_id"),
+        Index("ix_git_worktrees_project_id", "project_id"),
+        Index("ix_git_worktrees_task_id", "task_id"),
+        Index("ix_git_worktrees_attempt_id", "task_attempt_id"),
+        UniqueConstraint("task_attempt_id", name="uq_git_worktree_attempt"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("project_repositories.id"), nullable=False
+    )
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), nullable=False)
+    task_attempt_id: Mapped[str] = mapped_column(ForeignKey("task_attempts.id"), nullable=False)
+    worker_id: Mapped[str | None] = mapped_column(ForeignKey("workers.id"))
+    worktree_path: Mapped[str] = mapped_column(Text, nullable=False)
+    branch_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    base_branch: Mapped[str | None] = mapped_column(String(300))
+    base_commit_sha: Mapped[str | None] = mapped_column(String(64))
+    result_commit_sha: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[GitWorktreeStatus] = mapped_column(
+        enum_column(GitWorktreeStatus), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    prepared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cleanup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+
+class ArtifactRef(TimestampMixin, Base):
+    __tablename__ = "artifact_refs"
+    __table_args__ = (
+        Index("ix_artifact_refs_attempt_id", "task_attempt_id"),
+        Index("ix_artifact_refs_local_user_id", "local_user_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    owner_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    owner_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    local_user_id: Mapped[str | None] = mapped_column(ForeignKey("local_users.id"))
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"))
+    repository_id: Mapped[str | None] = mapped_column(ForeignKey("project_repositories.id"))
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"))
+    task_attempt_id: Mapped[str | None] = mapped_column(ForeignKey("task_attempts.id"))
+    worker_id: Mapped[str | None] = mapped_column(ForeignKey("workers.id"))
+    tool_call_id: Mapped[str | None] = mapped_column(ForeignKey("tool_calls.id"))
+    kind: Mapped[ArtifactKind] = mapped_column(enum_column(ArtifactKind), nullable=False)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(200), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    retention_policy: Mapped[str | None] = mapped_column(String(100))

@@ -37,6 +37,14 @@ class Settings(BaseSettings):
         database_path = (self.app_data_dir_path / "aidev.sqlite3").as_posix()
         return f"sqlite:///{database_path}"
 
+    @property
+    def worktrees_dir_path(self) -> Path:
+        return (self.app_data_dir_path / "worktrees").resolve()
+
+    @property
+    def artifacts_dir_path(self) -> Path:
+        return (self.app_data_dir_path / "artifacts").resolve()
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -48,3 +56,11 @@ def ensure_app_data_dir(settings: Settings | None = None) -> Path:
     app_data_dir = resolved_settings.app_data_dir_path
     app_data_dir.mkdir(parents=True, exist_ok=True)
     return app_data_dir
+
+
+def ensure_runtime_dirs(settings: Settings | None = None) -> tuple[Path, Path]:
+    resolved = settings or get_settings()
+    ensure_app_data_dir(resolved)
+    resolved.worktrees_dir_path.mkdir(parents=True, exist_ok=True)
+    resolved.artifacts_dir_path.mkdir(parents=True, exist_ok=True)
+    return resolved.worktrees_dir_path, resolved.artifacts_dir_path

@@ -87,4 +87,5 @@ h2 { margin: 0; font-size: 1.15rem; }
 .tool-row { display: flex; justify-content: space-between; gap: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #334155; }
 .muted { color: #94a3b8; }
 .button-row { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.6rem; }
+.diff-view { max-height: 24rem; overflow: auto; padding: 0.8rem; background: #020617; color: #cbd5e1; white-space: pre-wrap; }
 @media (max-width: 760px) { .records-grid { grid-template-columns: 1fr; } }

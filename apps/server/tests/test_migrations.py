@@ -47,6 +47,8 @@ def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(
             "tasks",
             "task_attempts",
             "workers",
+            "git_worktrees",
+            "artifact_refs",
         }.issubset(table_names)
 
         command.downgrade(alembic_config, "base")

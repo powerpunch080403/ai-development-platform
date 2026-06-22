@@ -102,4 +102,4 @@ Conversation History와 Agent Run 상태는 별도 테이블이다. Tool Call은
 
 Work Item 기본 status는 `active`, Task는 `draft`, Attempt는 `created`다. Attempt number는 Task별 1부터 증가한다. Claim은 Attempt를 `running_worker`, Task를 `running`, Worker를 `claimed`로 바꾸고 5분 lease를 설정한다. Heartbeat는 Worker의 active lease를 5분 연장한다. Release는 claim/lease/claimed-at을 지우고 Worker를 `available`로 만들며, 요청한 제한된 next status만 적용한다. 만료 lease 재claim 시 이전 Worker는 `expired`가 된다.
 
-Dirty repository 차단, Worker process, adapter, worktree, branch/commit/merge는 후속 slice다.
+Claimed Attempt는 `POST /task-attempts/{id}/worktree`로 격리 worktree를 만들 수 있다. 원본 repository dirty 상태는 `409`로 차단한다. Worktree status/diff 조회 후 `POST /worktrees/{id}/commit-result`가 작업 branch에만 자동 commit하고 Attempt를 `committed`, Task를 `waiting_for_review`로 바꾼다. Diff patch, pre-commit status와 commit log는 app data artifact 파일로 저장한다. Artifact metadata/list/text API를 제공하며 기본 branch merge/squash는 후속이다.
