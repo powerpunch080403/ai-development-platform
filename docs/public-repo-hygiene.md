@@ -27,3 +27,5 @@ Pairing code와 session token 원문은 secret runtime data다. Pairing code는 
 Dependency resolution을 재현하기 위한 `apps/server/uv.lock`과 루트 `pnpm-lock.yaml`은 commit 대상이다. `.venv`, `node_modules`와 generated `dist`는 commit하지 않는다.
 
 Repository status 기능은 Git read-only 명령만 실행한다. 실제 사용자 repository에서 fetch, branch, commit, worktree, stash, reset 또는 merge를 자동 실행하지 않는다.
+
+Message, Tool arguments, error와 Audit metadata에는 token, credential, 환경 변수 원문이나 사용자 source 내용을 불필요하게 복제하지 않는다. Tool Registry seed는 공개 가능한 이름과 정책 metadata만 포함하며 실제 실행 결과와 transcript는 runtime DB에만 둔다.

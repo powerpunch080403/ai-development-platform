@@ -4,6 +4,10 @@ import type {
   ProjectDto,
   ProjectRepositoryDto,
   RepositoryRole,
+  ConversationDto,
+  MessageDto,
+  AgentRunDto,
+  ToolRegistryEntryDto,
 } from "@aidp/shared-contracts";
 
 import {
@@ -15,9 +19,83 @@ import {
   pair,
   refreshRepositoryStatus,
   registerRepository,
+  listConversations,
+  createConversation,
+  listMessages,
+  appendMessage,
+  listAgentRuns,
+  createAgentRun,
+  listToolRegistry,
 } from "./api/client";
 
 const defaultDeviceName = `Web UI on ${navigator.userAgent.includes("Windows") ? "Windows" : "this device"}`;
+
+function RecordsPanel({ projects, selectedProjectId }: { projects: ProjectDto[]; selectedProjectId: string }) {
+  const [conversations, setConversations] = useState<ConversationDto[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState("");
+  const [messages, setMessages] = useState<MessageDto[]>([]);
+  const [runs, setRuns] = useState<AgentRunDto[]>([]);
+  const [tools, setTools] = useState<ToolRegistryEntryDto[]>([]);
+  const [title, setTitle] = useState("");
+  const [conversationProjectId, setConversationProjectId] = useState(selectedProjectId);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    listConversations().then((items) => { setConversations(items); setSelectedConversationId(items[0]?.id ?? ""); }).catch((e: Error) => setError(e.message));
+    listToolRegistry().then(setTools).catch((e: Error) => setError(e.message));
+  }, []);
+
+  useEffect(() => { if (selectedProjectId) setConversationProjectId(selectedProjectId); }, [selectedProjectId]);
+  useEffect(() => {
+    if (!selectedConversationId) { setMessages([]); setRuns([]); return; }
+    listMessages(selectedConversationId).then(setMessages).catch((e: Error) => setError(e.message));
+    listAgentRuns(selectedConversationId).then(setRuns).catch((e: Error) => setError(e.message));
+  }, [selectedConversationId]);
+
+  async function submitConversation(event: FormEvent) {
+    event.preventDefault(); setError("");
+    try {
+      const created = await createConversation({ title: title || undefined, project_id: conversationProjectId || undefined });
+      setConversations((items) => [created, ...items]); setSelectedConversationId(created.id); setTitle("");
+    } catch (e) { setError(e instanceof Error ? e.message : "Conversation creation failed"); }
+  }
+
+  async function submitMessage(event: FormEvent) {
+    event.preventDefault(); if (!selectedConversationId) return;
+    try { const created = await appendMessage(selectedConversationId, { role: "user", content: message }); setMessages((items) => [...items, created]); setMessage(""); }
+    catch (e) { setError(e instanceof Error ? e.message : "Message append failed"); }
+  }
+
+  async function submitRun() {
+    if (!selectedConversationId) return;
+    const conversation = conversations.find((item) => item.id === selectedConversationId);
+    try {
+      const created = await createAgentRun({ conversation_id: selectedConversationId, project_id: conversation?.project_id ?? undefined, purpose: "owner_request", input_message_id: messages.at(-1)?.id });
+      setRuns((items) => [created, ...items]);
+    } catch (e) { setError(e instanceof Error ? e.message : "Agent run creation failed"); }
+  }
+
+  return <section className="records-grid">
+    <section className="panel">
+      <h2>Conversations</h2>
+      <form className="nested-form" onSubmit={submitConversation}>
+        <label>Title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New Conversation" /></label>
+        <label>Project<select value={conversationProjectId} onChange={(e) => setConversationProjectId(e.target.value)}><option value="">General conversation</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        <button type="submit">Create conversation</button>
+      </form>
+      {conversations.length > 0 && <label>Selected conversation<select value={selectedConversationId} onChange={(e) => setSelectedConversationId(e.target.value)}>{conversations.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</select></label>}
+      {selectedConversationId && <>
+        <div className="message-list">{messages.map((item) => <p key={item.id}><strong>{item.role}</strong> {item.content}</p>)}</div>
+        <form className="nested-form" onSubmit={submitMessage}><label>User message<textarea value={message} onChange={(e) => setMessage(e.target.value)} required /></label><button type="submit">Append message</button></form>
+        <button type="button" className="secondary" onClick={submitRun}>Create Agent Run record</button>
+        <div>{runs.map((run) => <p key={run.id}><code>{run.id.slice(0, 8)}</code> · {run.status} · {run.purpose}</p>)}</div>
+      </>}
+    </section>
+    <section className="panel"><h2>Tool Registry</h2><p className="muted">Record contracts only; no tools execute in this slice.</p>{tools.map((tool) => <div className="tool-row" key={tool.id}><code>{tool.tool_name}</code><span>{tool.enabled ? "enabled" : "disabled"} · {tool.default_risk_level}</span></div>)}</section>
+    {error && <p className="error" role="alert">{error}</p>}
+  </section>;
+}
 
 function Workspace({ auth, onLogout }: { auth: AuthState; onLogout: () => Promise<void> }) {
   const [projects, setProjects] = useState<ProjectDto[]>([]);
@@ -161,6 +239,7 @@ function Workspace({ auth, onLogout }: { auth: AuthState; onLogout: () => Promis
           ))}
         </section>
       )}
+      <RecordsPanel projects={projects} selectedProjectId={selectedProjectId} />
       {error && <p className="error" role="alert">{error}</p>}
     </section>
   );

@@ -6,6 +6,8 @@ from aidp_server.config import get_settings
 from aidp_server.devices import router as devices_router
 from aidp_server.health import router as health_router
 from aidp_server.projects import router as projects_router
+from aidp_server.conversations import router as conversations_router
+from aidp_server.tool_calls import router as tool_calls_router
 from aidp_server.system import router as system_router
 
 
@@ -24,6 +26,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(devices_router)
     app.include_router(projects_router)
+    app.include_router(conversations_router)
+    app.include_router(tool_calls_router)
     return app
 
 

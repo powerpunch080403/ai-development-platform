@@ -83,3 +83,15 @@ export type RegisterRepositoryRequest = {
   repository_path: string;
   repository_role?: RepositoryRole;
 };
+
+export type ConversationDto = { id: string; project_id: string | null; title: string; status: string; created_at: string; updated_at: string };
+export type MessageDto = { id: string; conversation_id: string; agent_run_id: string | null; role: string; content: string; content_type: string; created_at: string };
+export type AgentRunDto = { id: string; conversation_id: string | null; project_id: string | null; status: string; purpose: string; input_message_id: string | null; created_at: string; started_at: string | null; completed_at: string | null; failed_at: string | null; cancelled_at: string | null; error_code: string | null; error_message: string | null };
+export type AgentRunStepDto = { id: string; agent_run_id: string; step_index: number; step_type: string; status: string; summary: string | null; created_at: string };
+export type ToolRegistryEntryDto = { id: string; tool_name: string; tool_version: string; category: string; description: string; has_side_effect: boolean; default_risk_level: string; idempotency_required: boolean; approval_behavior: string; audit_required: boolean; enabled: boolean };
+export type ToolCallDto = { id: string; tool_name: string; status: string; arguments_json: Record<string, unknown>; created_at: string };
+export type AuditEventDto = { id: string; event_type: string; severity: string; message: string; created_at: string };
+export type CreateConversationRequest = { project_id?: string; title?: string };
+export type AppendMessageRequest = { role: "user" | "assistant" | "system"; content: string; content_type?: "text" | "json" | "markdown" | "error" };
+export type CreateAgentRunRequest = { conversation_id?: string; project_id?: string; purpose: string; input_message_id?: string };
+export type CreateToolCallRequest = { tool_name: string; tool_version?: string; idempotency_key?: string; arguments_json: Record<string, unknown> };

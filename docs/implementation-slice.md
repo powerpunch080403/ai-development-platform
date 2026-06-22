@@ -17,8 +17,8 @@ Mock과 Manual Adapter는 실제 외부 CLI integration 전에 상태 머신과 
 
 Remote Test Runner는 MVP에 포함하지만 Local Worker path 이후 구현한다. 작은 게임 제작은 첫 구현 대상이 아니라 Personal Alpha의 Golden Path 3 검증 시나리오다.
 
-현재 repository는 Project / Repository Registration + Git Status 단계다. 인증된 local user가 Project를 만들고 여러 ProjectRepository를 등록하며, normalized root, role, branch, HEAD와 dirty 상태를 SQLite에 기록할 수 있다.
+현재 repository는 Conversation / Agent Run / Tool Call Envelope baseline 단계다. Project 연결 또는 일반 Conversation, Message, Agent Run/Step, idempotent Tool Registry seed, Tool Call 상태와 Audit Event를 SQLite에 기록한다.
 
 이 Slice의 Git 동작은 status/read-only 확인에 한정한다. Dirty repository도 등록과 읽기·분석은 허용하지만 후속 Worker 실행은 dirty 상태에서 차단할 예정이다. Conversation/Tool/Task/Worker, worktree/branch/commit/merge, CLI Adapter, Remote Test Runner와 Desktop packaging은 아직 구현하지 않았다.
 
-현재 REST/application service는 후속 Tool Registry에서 `project.create`, `repository.register`, `repository.get_status`, `repository.check_dirty` 후보가 사용할 기반이다. 이번 Slice에서는 Tool Call Envelope나 Tool Registry 자체를 구현하지 않는다.
+이번 Slice의 Tool Call은 실행기가 아니라 추적 Envelope다. 실제 Owner LLM/CLI, Policy/Approval 실행, Worker와 Tool 부작용은 후속이며 Conversation History, Run State와 장기 Memory는 섞지 않는다.

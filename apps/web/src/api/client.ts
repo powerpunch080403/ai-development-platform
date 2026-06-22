@@ -6,6 +6,13 @@ import type {
   ProjectDto,
   ProjectRepositoryDto,
   RegisterRepositoryRequest,
+  ConversationDto,
+  MessageDto,
+  AgentRunDto,
+  ToolRegistryEntryDto,
+  CreateConversationRequest,
+  AppendMessageRequest,
+  CreateAgentRunRequest,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -82,3 +89,11 @@ export function refreshRepositoryStatus(repositoryId: string): Promise<GitReposi
     method: "POST",
   });
 }
+
+export function listConversations(): Promise<ConversationDto[]> { return request<ConversationDto[]>("/conversations"); }
+export function createConversation(input: CreateConversationRequest): Promise<ConversationDto> { return request<ConversationDto>("/conversations", { method: "POST", body: JSON.stringify(input) }); }
+export function listMessages(id: string): Promise<MessageDto[]> { return request<MessageDto[]>(`/conversations/${id}/messages`); }
+export function appendMessage(id: string, input: AppendMessageRequest): Promise<MessageDto> { return request<MessageDto>(`/conversations/${id}/messages`, { method: "POST", body: JSON.stringify(input) }); }
+export function listAgentRuns(id: string): Promise<AgentRunDto[]> { return request<AgentRunDto[]>(`/conversations/${id}/agent-runs`); }
+export function createAgentRun(input: CreateAgentRunRequest): Promise<AgentRunDto> { return request<AgentRunDto>("/agent-runs", { method: "POST", body: JSON.stringify(input) }); }
+export function listToolRegistry(): Promise<ToolRegistryEntryDto[]> { return request<ToolRegistryEntryDto[]>("/tool-registry"); }

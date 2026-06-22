@@ -10,6 +10,13 @@ def test_identity_tables_are_registered_in_metadata() -> None:
         "pairing_codes",
         "projects",
         "project_repositories",
+        "conversations",
+        "messages",
+        "agent_runs",
+        "agent_run_steps",
+        "tool_registry",
+        "tool_calls",
+        "audit_events",
     }.issubset(Base.metadata.tables)
 
 

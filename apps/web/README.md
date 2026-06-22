@@ -2,7 +2,7 @@
 
 Desktop App Shell에서 재사용할 수 있는 React/TypeScript/Vite Web UI skeleton이다.
 
-현재는 pairing/session 위에 Project 생성·선택, Git repository 경로와 role 등록, branch/commit/dirty 상태 표시와 refresh를 포함한다. Owner chat와 Task UI는 아직 구현하지 않았다. Session token은 JavaScript나 localStorage에 저장하지 않고 HttpOnly cookie만 사용한다.
+현재는 pairing/session과 Project/Repository UI 위에 일반 또는 Project Conversation 생성, user Message append, Agent Run record 생성·목록과 Tool Registry 표시를 포함한다. 실제 AI 응답과 Tool 실행은 없다. Session token은 HttpOnly cookie만 사용한다.
 
 ## Windows PowerShell
 

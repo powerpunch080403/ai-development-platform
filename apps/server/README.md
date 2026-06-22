@@ -2,7 +2,7 @@
 
 App-managed Local Runtime의 FastAPI server skeleton이다.
 
-현재 구현은 SQLite/Alembic baseline, local authentication, Project/ProjectRepository 등록과 Git read-only status를 제공한다. Conversation, Task와 Worker는 아직 구현하지 않았다. `python -m aidp_server.main`은 개발 server를 실행하지 않으므로 uvicorn을 사용한다.
+현재 구현은 local authentication, Project/Repository, Conversation/Message, Agent Run/Step, Tool Registry/Call Envelope와 Audit Event 기록을 제공한다. 실제 Owner 모델, Task와 Worker는 아직 구현하지 않았다. `python -m aidp_server.main`은 개발 server를 실행하지 않으므로 uvicorn을 사용한다.
 
 ## Windows PowerShell
 
@@ -83,3 +83,12 @@ Device 폐기는 해당 device의 활성 session도 함께 폐기한다. 개발 
 등록 경로는 실제 Git root의 normalized absolute path로 저장한다. 같은 Project의 같은 root와 두 번째 활성 `primary`는 `409`로 거절한다. Role 미지정 시 첫 repository는 `primary`, 이후 repository는 `unknown`이다.
 
 Git 확인은 argument array, `shell=False`, timeout을 사용해 `rev-parse`, `status --porcelain`, `branch --show-current`, `rev-parse HEAD`와 local ref만 읽는다. Remote fetch와 Git write operation은 없다. Dirty에는 staged, unstaged와 untracked file이 모두 포함되며 dirty 상태도 등록과 분석은 허용한다.
+
+## Conversation, Agent Run과 Tool 기록 API
+
+- Conversation/Message: `POST/GET /conversations`, `POST/GET /conversations/{id}/messages`
+- Agent Run: `POST /agent-runs`, `GET /agent-runs/{id}`, Conversation별 목록, status와 step 기록
+- Tool: `GET /tool-registry`, `POST/GET /tool-calls`, Tool Call status 기록
+- Audit: `GET /audit-events`와 project/conversation/agent-run filter
+
+Conversation History와 Agent Run 상태는 별도 테이블이다. Tool Call은 enabled registry 항목만 Envelope로 기록하며 어떤 부작용도 실행하지 않는다. Side-effect 후보 Tool은 idempotency key가 필수이고 같은 tool/key/project/repository scope는 `409`로 차단한다. Audit Event는 Conversation, Message, Run과 Tool Call의 주요 변경을 추적하며 secret을 metadata에 저장하지 않는다.
