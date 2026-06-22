@@ -9,7 +9,7 @@ import type {
   AgentRunDto,
   ToolRegistryEntryDto,
   WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto,
-  GitWorktreeDto,ArtifactRefDto,
+  GitWorktreeDto,ArtifactRefDto, WorkerRunDto,
   AttemptReviewDto,
 } from "@aidp/shared-contracts";
 
@@ -33,7 +33,7 @@ import {
   listWorkers, registerWorker, heartbeatWorker, revokeWorker, claimAttempt, releaseAttempt,
   createWorktree,getWorktreeStatus,getWorktreeDiff,commitWorktree,listArtifacts,readArtifact,
   listMergeReady,getReview,approveReview,rejectReview,prepareSquash,performSquash,listCleanupPending,cleanupWorktree,
-  runMockWorker,
+  runMockWorker, startManualWorker, submitManualWorker, listWorkerRuns,
 } from "./api/client";
 
 const defaultDeviceName = `Web UI on ${navigator.userAgent.includes("Windows") ? "Windows" : "this device"}`;
@@ -112,8 +112,25 @@ function WorkPanel({ projectId, repositories }: { projectId: string; repositorie
   const [workTitle,setWorkTitle]=useState(""); const [taskTitle,setTaskTitle]=useState(""); const [instructions,setInstructions]=useState("");
   const [workItemId,setWorkItemId]=useState(""); const [repositoryId,setRepositoryId]=useState(""); const [workerName,setWorkerName]=useState(""); const [error,setError]=useState("");
   const [worktrees,setWorktrees]=useState<Record<string,GitWorktreeDto>>({});const [diff,setDiff]=useState("");const [artifacts,setArtifacts]=useState<ArtifactRefDto[]>([]);const [artifactText,setArtifactText]=useState("");
+  const [workerRuns,setWorkerRuns]=useState<Record<string,WorkerRunDto>>({});
   useEffect(()=>{if(!projectId){setItems([]);setTasks([]);return} listWorkItems(projectId).then(setItems);listTasks(projectId).then(v=>{setTasks(v);setSelectedTask(v[0]?.id??"")});listWorkers().then(v=>{setWorkers(v);setSelectedWorker(v[0]?.id??"")})},[projectId]);
-  useEffect(()=>{if(selectedTask)listAttempts(selectedTask).then(setAttempts);else setAttempts([])},[selectedTask]);
+  useEffect(()=>{
+    if(selectedTask) {
+      listAttempts(selectedTask).then(async (atts) => {
+        setAttempts(atts);
+        const runsData: Record<string, WorkerRunDto> = {};
+        for(const a of atts) {
+          const runs = await listWorkerRuns(a.id);
+          const active = runs.find(r => r.adapter_kind === "manual" && r.status === "running");
+          if(active) runsData[a.id] = active;
+        }
+        setWorkerRuns(runsData);
+      });
+    } else {
+      setAttempts([]);
+      setWorkerRuns({});
+    }
+  },[selectedTask]);
   async function addWork(e:FormEvent){e.preventDefault();try{const v=await createWorkItem(projectId,{title:workTitle,work_item_type:"feature"});setItems(x=>[...x,v]);setWorkTitle("")}catch(x){setError(x instanceof Error?x.message:"Work item failed")}}
   async function addTask(e:FormEvent){e.preventDefault();try{const v=await createTask(projectId,{title:taskTitle,instructions,repository_id:repositoryId||undefined,work_item_id:workItemId||undefined,risk_level:"R1",requested_worker_kind:"manual"});setTasks(x=>[v,...x]);setSelectedTask(v.id);setTaskTitle("");setInstructions("")}catch(x){setError(x instanceof Error?x.message:"Task failed")}}
   async function addWorker(e:FormEvent){e.preventDefault();const isMock=workerName.toLowerCase().includes("mock");const v=await registerWorker({display_name:workerName,worker_kind:isMock?"mock":"manual",capabilities:{manual:true}});setWorkers(x=>[...x,v]);setSelectedWorker(v.id);setWorkerName("")}
@@ -123,13 +140,15 @@ function WorkPanel({ projectId, repositories }: { projectId: string; repositorie
   async function lease(a:TaskAttemptDto,release=false){if(!selectedWorker)return;try{const v=release?await releaseAttempt(selectedWorker,a.id):await claimAttempt(selectedWorker,a.id);setAttempts(x=>x.map(i=>i.id===v.id?v:i));setWorkers(await listWorkers())}catch(x){setError(x instanceof Error?x.message:"Lease operation failed")}}
   async function makeWorktree(a:TaskAttemptDto){try{const v=await createWorktree(a.id);setWorktrees(x=>({...x,[a.id]:v}))}catch(x){setError(x instanceof Error?x.message:"Worktree failed")}}
   async function wtAction(a:TaskAttemptDto,kind:"status"|"diff"|"commit"){const w=worktrees[a.id];if(!w)return;try{if(kind==="status"){const s=await getWorktreeStatus(w.id);setWorktrees(x=>({...x,[a.id]:{...w,status:s.status}}))}else if(kind==="diff"){setDiff((await getWorktreeDiff(w.id)).diff)}else{const v=await commitWorktree(w.id,"chore: apply manual worker result");setWorktrees(x=>({...x,[a.id]:v}));setArtifacts(await listArtifacts(a.id))}}catch(x){setError(x instanceof Error?x.message:"Worktree action failed")}}
+  async function doStartManual(a:TaskAttemptDto){try{const v=await startManualWorker(a.id,{notes:"Started via Web UI"});setWorkerRuns(x=>({...x,[a.id]:v.worker_run}));setWorktrees(x=>({...x,[a.id]:v.worktree}))}catch(x){setError(x instanceof Error?x.message:"Start manual failed")}}
+  async function doSubmitManual(a:TaskAttemptDto){try{const v=await submitManualWorker(a.id,{commit_message:"docs: manual UI edit",result_summary:"Submitted via Web UI"});setWorkerRuns(x=>({...x,[a.id]:v.worker_run}));setArtifacts(await listArtifacts(a.id));listAttempts(selectedTask).then(setAttempts)}catch(x){setError(x instanceof Error?x.message:"Submit manual failed")}}
   async function showArtifact(id:string){setArtifactText((await readArtifact(id)).text)}
   if(!projectId)return null;
   return <section className="panel"><h2>Work / Tasks / Workers</h2><p className="muted">This MVP does not run an AI worker yet. Create a worktree, edit it manually, then commit the result here.</p>
     <div className="records-grid"><div><form className="nested-form" onSubmit={addWork}><label>Work item title<input value={workTitle} onChange={e=>setWorkTitle(e.target.value)} required/></label><button>Create work item</button></form>{items.map(i=><p key={i.id}><span className="badge">{i.status}</span> {i.title}</p>)}</div>
     <div><form className="nested-form" onSubmit={addWorker}><label>Worker name<input value={workerName} onChange={e=>setWorkerName(e.target.value)} required/></label><button>Register manual worker</button></form><select value={selectedWorker} onChange={e=>setSelectedWorker(e.target.value)}>{workers.map(w=><option key={w.id} value={w.id}>{w.display_name} · {w.status}</option>)}</select><div className="button-row"><button type="button" className="secondary" onClick={()=>workerAction("heartbeat")}>Heartbeat</button><button type="button" className="secondary" onClick={()=>workerAction("revoke")}>Revoke</button></div></div></div>
     <form className="nested-form" onSubmit={addTask}><label>Task title<input value={taskTitle} onChange={e=>setTaskTitle(e.target.value)} required/></label><label>Instructions<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} required/></label><label>Repository<select value={repositoryId} onChange={e=>setRepositoryId(e.target.value)}><option value="">None</option>{repositories.map(r=><option key={r.id} value={r.id}>{r.repository_name}</option>)}</select></label><label>Work item<select value={workItemId} onChange={e=>setWorkItemId(e.target.value)}><option value="">None</option>{items.map(i=><option key={i.id} value={i.id}>{i.title}</option>)}</select></label><button>Create draft task</button></form>
-    {tasks.length>0&&<><label>Selected task<select value={selectedTask} onChange={e=>setSelectedTask(e.target.value)}>{tasks.map(t=><option key={t.id} value={t.id}>{t.title} · {t.status}</option>)}</select></label><button type="button" onClick={addAttempt}>Create attempt</button>{attempts.map(a=>{const w=worktrees[a.id];return <article className="repository-card" key={a.id}><div>Attempt #{a.attempt_number} · <span className="badge">{a.status}</span></div><div>Lease: {a.lease_expires_at??"none"}</div><div className="button-row"><button type="button" onClick={()=>lease(a)}>Claim</button><button type="button" className="secondary" onClick={()=>lease(a,true)}>Release</button>{a.claimed_by_worker_id&&!w&&<button type="button" onClick={()=>makeWorktree(a)}>Create Worktree</button>}{a.claimed_by_worker_id&&workers.find(wk=>wk.id===a.claimed_by_worker_id)?.worker_kind==="mock"&&<button type="button" onClick={()=>doRunMock(a)}>Run Mock Worker</button>}</div>{w&&<><code>{w.worktree_path}</code><div>Branch: {w.branch_name}</div><div>Base: {w.base_commit_sha?.slice(0,8)} · Result: {w.result_commit_sha?.slice(0,8)??"none"}</div><div className="button-row"><button type="button" onClick={()=>wtAction(a,"status")}>Refresh status</button><button type="button" onClick={()=>wtAction(a,"diff")}>View diff</button><button type="button" onClick={()=>wtAction(a,"commit")}>Commit result</button></div></>}</article>})}</>}
+    {tasks.length>0&&<><label>Selected task<select value={selectedTask} onChange={e=>setSelectedTask(e.target.value)}>{tasks.map(t=><option key={t.id} value={t.id}>{t.title} · {t.status}</option>)}</select></label><button type="button" onClick={addAttempt}>Create attempt</button>{attempts.map(a=>{const w=worktrees[a.id];const wr=workerRuns[a.id];const w_k=workers.find(wk=>wk.id===a.claimed_by_worker_id)?.worker_kind;return <article className="repository-card" key={a.id}><div>Attempt #{a.attempt_number} · <span className="badge">{a.status}</span></div><div>Lease: {a.lease_expires_at??"none"}</div><div className="button-row"><button type="button" onClick={()=>lease(a)}>Claim</button><button type="button" className="secondary" onClick={()=>lease(a,true)}>Release</button>{a.claimed_by_worker_id&&!w&&<button type="button" onClick={()=>makeWorktree(a)}>Create Worktree (Raw)</button>}{a.claimed_by_worker_id&&w_k==="mock"&&<button type="button" onClick={()=>doRunMock(a)}>Run Mock Worker</button>}{a.claimed_by_worker_id&&w_k==="manual"&&!wr&&<button type="button" onClick={()=>doStartManual(a)}>Start Manual Worker</button>}{wr&&wr.status==="running"&&<button type="button" onClick={()=>doSubmitManual(a)}>Submit Manual Result</button>}</div>{w&&<><code>{w.worktree_path}</code><div>Branch: {w.branch_name}</div><div>Base: {w.base_commit_sha?.slice(0,8)} · Result: {w.result_commit_sha?.slice(0,8)??"none"}</div>{wr&&wr.status==="running"&&<div style={{color:"#0969da"}}>You can now edit files manually in the worktree. Click "Submit Manual Result" when done.</div>}<div className="button-row"><button type="button" onClick={()=>wtAction(a,"status")}>Refresh status</button><button type="button" onClick={()=>wtAction(a,"diff")}>View diff</button><button type="button" className="secondary" onClick={()=>wtAction(a,"commit")}>Commit result (Raw)</button></div></>}</article>})}</>}
     {diff&&<pre className="diff-view">{diff}</pre>}{artifacts.map(v=><button key={v.id} type="button" className="secondary" onClick={()=>showArtifact(v.id)}>{v.kind}</button>)}{artifactText&&<pre className="diff-view">{artifactText}</pre>}
     {error&&<p className="error">{error}</p>}
   </section>

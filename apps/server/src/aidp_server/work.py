@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from aidp_server.audit import record_audit_event
 from aidp_server.auth import CurrentAuth
+from aidp_server.config import get_settings, Settings
 from aidp_server.db.models import (
     AgentRun,
     Conversation,
@@ -191,6 +192,37 @@ class RunMockWorkerResponse(BaseModel):
     worker_run: WorkerRunView
     artifact_id: str | None = None
     status: str
+
+
+class StartManualWorkerRequest(BaseModel):
+    notes: str | None = None
+
+
+class StartManualWorkerResponse(BaseModel):
+    worker_run: WorkerRunView
+    worktree: Any
+    task: TaskView
+
+
+class SubmitManualWorkerRequest(BaseModel):
+    commit_message: str | None = None
+    result_summary: str | None = None
+
+
+class SubmitManualWorkerResponse(BaseModel):
+    worker_run: WorkerRunView
+    artifact_id: str | None = None
+    result_commit_sha: str | None = None
+    status: str
+
+
+class FailWorkerRunRequest(BaseModel):
+    error_message: str
+    error_code: str | None = None
+
+
+class CancelWorkerRunRequest(BaseModel):
+    reason: str | None = None
 
 
 router = APIRouter(tags=["work, tasks, and workers"])
@@ -585,6 +617,159 @@ def execute_mock_worker(
         artifact_id=artifact.id if artifact else None,
         status="success" if worker_run.status == "succeeded" else "failed"
     )
+
+
+@router.post("/task-attempts/{attempt_id}/manual-worker/start", response_model=StartManualWorkerResponse)
+def api_start_manual_worker(
+    attempt_id: str,
+    request: StartManualWorkerRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> StartManualWorkerResponse:
+    from aidp_server.adapters.manual_worker import start_manual_worker
+    from aidp_server.worktrees import view as worktree_view
+    
+    attempt = owned(session, TaskAttempt, attempt_id, current.user.id)
+    
+    audit(
+        session,
+        current,
+        "worker.run_manual",
+        "Manual worker run initiated",
+        project_id=attempt.project_id,
+        repository_id=attempt.repository_id,
+        metadata={"task_attempt_id": attempt.id},
+    )
+    
+    try:
+        worker_run, worktree = start_manual_worker(session, settings, current, attempt, request.notes)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+        
+    session.commit()
+    session.refresh(worker_run)
+    task = session.get(Task, attempt.task_id)
+    
+    return StartManualWorkerResponse(
+        worker_run=WorkerRunView.model_validate(worker_run),
+        worktree=worktree_view(worktree),
+        task=task_view(task)
+    )
+
+
+@router.post("/task-attempts/{attempt_id}/manual-worker/submit", response_model=SubmitManualWorkerResponse)
+def api_submit_manual_worker(
+    attempt_id: str,
+    request: SubmitManualWorkerRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SubmitManualWorkerResponse:
+    from aidp_server.adapters.manual_worker import submit_manual_worker
+    
+    attempt = owned(session, TaskAttempt, attempt_id, current.user.id)
+    
+    try:
+        worker_run, artifact, result_sha = submit_manual_worker(
+            session, settings, attempt, request.commit_message, request.result_summary
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+        
+    session.commit()
+    session.refresh(worker_run)
+    
+    return SubmitManualWorkerResponse(
+        worker_run=WorkerRunView.model_validate(worker_run),
+        artifact_id=artifact.id if artifact else None,
+        result_commit_sha=result_sha,
+        status="success" if worker_run.status == "succeeded" else "failed"
+    )
+
+
+@router.post("/worker-runs/{run_id}/fail", response_model=dict)
+def api_fail_worker_run(
+    run_id: str,
+    request: FailWorkerRunRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict:
+    from aidp_server.adapters.manual_worker import fail_worker_run
+    
+    worker_run = owned(session, WorkerRun, run_id, current.user.id)
+    audit(
+        session,
+        current,
+        "worker_run.fail",
+        "Worker run failed",
+        project_id=worker_run.project_id,
+        repository_id=worker_run.repository_id,
+        metadata={"worker_run_id": worker_run.id},
+    )
+    
+    try:
+        fail_worker_run(session, settings, worker_run, request.error_message, request.error_code)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+        
+    session.commit()
+    return {"status": "ok"}
+
+
+@router.post("/worker-runs/{run_id}/cancel", response_model=dict)
+def api_cancel_worker_run(
+    run_id: str,
+    request: CancelWorkerRunRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict:
+    from aidp_server.adapters.manual_worker import cancel_worker_run
+    
+    worker_run = owned(session, WorkerRun, run_id, current.user.id)
+    audit(
+        session,
+        current,
+        "worker_run.cancel",
+        "Worker run cancelled",
+        project_id=worker_run.project_id,
+        repository_id=worker_run.repository_id,
+        metadata={"worker_run_id": worker_run.id},
+    )
+    
+    try:
+        cancel_worker_run(session, settings, worker_run, request.reason)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+        
+    session.commit()
+    return {"status": "ok"}
+
+
+@router.get("/task-attempts/{attempt_id}/worker-runs", response_model=list[WorkerRunView])
+def list_worker_runs(
+    attempt_id: str,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> list[WorkerRunView]:
+    owned(session, TaskAttempt, attempt_id, current.user.id)
+    runs = session.scalars(
+        select(WorkerRun)
+        .where(WorkerRun.task_attempt_id == attempt_id)
+        .order_by(WorkerRun.created_at.desc())
+    ).all()
+    return [WorkerRunView.model_validate(r) for r in runs]
+
+
+@router.get("/worker-runs/{run_id}", response_model=WorkerRunView)
+def get_worker_run_endpoint(
+    run_id: str,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> WorkerRunView:
+    return WorkerRunView.model_validate(owned(session, WorkerRun, run_id, current.user.id))
 
 
 @router.post("/workers", response_model=WorkerView, status_code=201)

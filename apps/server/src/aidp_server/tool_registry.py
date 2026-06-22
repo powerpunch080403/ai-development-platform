@@ -41,6 +41,11 @@ TOOL_DEFINITIONS = (
     ("merge.perform_squash", "merge", True, "R3"),
     ("worktree.cleanup", "worktree", True, "R2"),
     ("worktree.list_cleanup_pending", "worktree", False, "R1"),
+    ("worker.run_manual", "worker", True, "R2"),
+    ("worker_run.get", "worker", False, "R1"),
+    ("worker_run.list_for_attempt", "worker", False, "R1"),
+    ("worker_run.fail", "worker", True, "R2"),
+    ("worker_run.cancel", "worker", True, "R2"),
 )
 
 

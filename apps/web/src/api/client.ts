@@ -13,10 +13,13 @@ import type {
   CreateConversationRequest,
   AppendMessageRequest,
   CreateAgentRunRequest,
-  WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto, CreateWorkItemRequest, CreateTaskRequest, RegisterWorkerRequest,
+  WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto, WorkerRunDto, CreateWorkItemRequest, CreateTaskRequest, RegisterWorkerRequest,
   GitWorktreeDto,WorktreeStatusDto,WorktreeDiffDto,ArtifactRefDto,
   AttemptReviewDto,PrepareSquashMergeResponse,
   RunMockWorkerRequest, RunMockWorkerResponse,
+  StartManualWorkerRequest, StartManualWorkerResponse,
+  SubmitManualWorkerRequest, SubmitManualWorkerResponse,
+  FailWorkerRunRequest, CancelWorkerRunRequest,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -129,3 +132,9 @@ export function prepareSquash(id:string):Promise<PrepareSquashMergeResponse>{ret
 export function performSquash(id:string,message:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/merge/squash`,{method:"POST",body:JSON.stringify({commit_message:message||undefined})})}
 export function listCleanupPending():Promise<GitWorktreeDto[]>{return request<GitWorktreeDto[]>("/worktrees/cleanup-pending")}
 export function cleanupWorktree(id:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/worktrees/${id}/cleanup`,{method:"POST",body:JSON.stringify({force:false})})}
+export function startManualWorker(attemptId:string, input:StartManualWorkerRequest):Promise<StartManualWorkerResponse>{return request<StartManualWorkerResponse>(`/task-attempts/${attemptId}/manual-worker/start`,{method:"POST",body:JSON.stringify(input)})}
+export function submitManualWorker(attemptId:string, input:SubmitManualWorkerRequest):Promise<SubmitManualWorkerResponse>{return request<SubmitManualWorkerResponse>(`/task-attempts/${attemptId}/manual-worker/submit`,{method:"POST",body:JSON.stringify(input)})}
+export function failWorkerRun(runId:string, input:FailWorkerRunRequest):Promise<{status:string}>{return request<{status:string}>(`/worker-runs/${runId}/fail`,{method:"POST",body:JSON.stringify(input)})}
+export function cancelWorkerRun(runId:string, input:CancelWorkerRunRequest):Promise<{status:string}>{return request<{status:string}>(`/worker-runs/${runId}/cancel`,{method:"POST",body:JSON.stringify(input)})}
+export function listWorkerRuns(attemptId:string):Promise<WorkerRunDto[]>{return request<WorkerRunDto[]>(`/task-attempts/${attemptId}/worker-runs`)}
+export function getWorkerRun(runId:string):Promise<WorkerRunDto>{return request<WorkerRunDto>(`/worker-runs/${runId}`)}

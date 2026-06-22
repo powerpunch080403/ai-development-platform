@@ -21,8 +21,10 @@ README 수정 Golden Path 전체 흐름은 [docs/golden-path-readme.md](docs/gol
 
 - Local Runtime과 Web UI pairing/session
 - Project/Repository 등록과 Git dirty 확인
-- Work Item/Task/Attempt/Worker claim
-- 격리 Worktree와 Manual result commit
+- Worker registry / claim / lease / heartbeat
+- 격리 Git Worktree 생성 및 관리
+- **Manual Worker Adapter** (Web UI 기반의 Start / Submit 흐름)
+- **Mock Worker Adapter** (Golden path E2E 테스트용)
 - Owner review와 사용자 승인 기반 local squash merge
 
 아직 불가능한 것:
