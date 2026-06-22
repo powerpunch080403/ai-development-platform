@@ -27,7 +27,7 @@ class ExternalCliRunExperimentalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     adapter_kind: Literal["antigravity_cli"] = "antigravity_cli"
     worker_id: str
-    mode: Literal["controlled_readme_test", "controlled_scope_violation_test"] = "controlled_readme_test"
+    mode: Literal["controlled_readme_test", "controlled_scope_violation_test", "controlled_timeout_test"] = "controlled_readme_test"
 
 
 class ExternalCliRunResult(BaseModel):

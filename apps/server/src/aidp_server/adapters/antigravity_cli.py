@@ -126,7 +126,18 @@ async def execute_antigravity_cli_worker(
     # We do NOT pass executable or args from the HTTP request body.
     cli_path = settings.antigravity_cli_path
     
-    if mode == "controlled_scope_violation_test":
+    if mode == "controlled_timeout_test":
+        controlled_prompt = (
+            "You are running inside an isolated git worktree.\n\n"
+            "Task:\nWait for a long time and do not modify any files.\n\n"
+            "Rules:\n"
+            "- Do not modify README.md.\n"
+            "- Do not create new files.\n"
+            "- Do not modify git history.\n"
+            "- Do not commit changes.\n"
+            "- Do not finish until instructed otherwise."
+        )
+    elif mode == "controlled_scope_violation_test":
         controlled_prompt = (
             "You are running inside an isolated git worktree.\n\n"
             "Task:\nCreate a new file named OUT_OF_SCOPE.txt with exactly this content:\n\n"

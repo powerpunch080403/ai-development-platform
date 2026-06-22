@@ -60,6 +60,16 @@ $env:AIDP_RUN_REAL_AGY_TESTS="true"
 9. **Complete the Golden Path**
    Proceed manually to review, approve, and squash-merge the result commit using the standard UI actions.
 
+## Process Failure / Timeout Path E2E
+
+- Real AGY timeout/process failure is explicitly covered by an opt-in E2E test.
+- This Timeout E2E test exclusively uses a temporary repository to ensure source safety.
+- AGY is instructed by a controlled enum mode (`controlled_timeout_test`), **not a free-form prompt**, avoiding arbitrary command execution.
+- If AGY times out, the `WorkerRun` and `ProcessRun` records are safely marked as failed (`TIMED_OUT`), and no result commit is created in the Git worktree.
+- The Owner review/merge state is completely skipped/prevented.
+- Real AGY tests, including success, violation, and timeout paths, are skipped by default in the test suite.
+- `--dangerously-skip-permissions` remains completely disabled by default on the server and is securely governed by environment toggles.
+
 ## Write Scope Violation Path (Failure Path) E2E
 
 - Real AGY `write_scope` violation is explicitly covered by an opt-in E2E test.

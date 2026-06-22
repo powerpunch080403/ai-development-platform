@@ -36,7 +36,7 @@
 - Process Runner Baseline (향후 CLI Adapter 연동용 안전한 프로세스 실행)
 - Server-enforced Task/TaskAttempt state transition guards
 - Task write-scope and pre-commit changed-path validation
-- Opt-in real AGY controlled result review/squash-merge E2E (temporary repository only)
+- Opt-in real AGY controlled E2E (success, write_scope violation, and timeout paths) using temporary repository only
 - Unified Action Policy Catalog (Action risk level & tool registry sync)
 - Policy Decision enforcement on major side-effect APIs
 - Approval Fingerprint Arguments Hash (Execution arguments validation)

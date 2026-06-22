@@ -178,6 +178,7 @@ async def execute_process_async(
             run_record.status = ProcessRunStatus.TIMED_OUT
             run_record.timed_out_at = utc_now()
             run_record.error_message = f"Process timed out after {timeout_seconds} seconds"
+            run_record.error_code = "TIMED_OUT"
         elif exit_code == 0:
             run_record.status = ProcessRunStatus.SUCCEEDED
             run_record.completed_at = utc_now()
