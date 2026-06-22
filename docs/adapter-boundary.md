@@ -9,7 +9,7 @@
 
 - Codex CLI Owner Adapter
 - External CLI Worker Adapter
-- **Experimental Antigravity CLI Worker Adapter**: Antigravity CLI를 제한된 환경(Worktree 격리, 고정된 실행 경로, 서버 설정 제어)에서 실행하기 위한 실험적 Adapter. 기본적으로 비활성화되어 있으며, 로컬 설정으로만 경로를 지정할 수 있다.
+- **Experimental Antigravity CLI Worker Adapter**: Antigravity CLI(`agy`)를 제한된 환경(Worktree 격리, 고정된 실행 경로, 서버 설정 제어)에서 실행하기 위한 실험적 Adapter. 기본적으로 비활성화되어 있으며, 로컬 설정으로만 경로를 지정할 수 있다. (Note: 로컬 환경 탐색 결과 `agy` 실행 파일을 발견했으며, `--print`와 `--dangerously-skip-permissions` 등 non-interactive 가능성을 확인했다.)
 - **External CLI Dry Run Adapter**: CLI Adapter의 Context Package 전달 및 Process Runner 연동 계약(Contract)을 실제 AI 모델 호출 없이 안전하게 검증하는 용도
 
 ## 중요한 경계
