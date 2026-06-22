@@ -37,6 +37,10 @@ importers:
         version: 5.4.21
 
   packages/cli-adapters:
+    dependencies:
+      '@aidp/shared-contracts':
+        specifier: workspace:*
+        version: link:../shared-contracts
     devDependencies:
       typescript:
         specifier: ^5.5.4

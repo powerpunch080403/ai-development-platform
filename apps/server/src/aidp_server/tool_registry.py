@@ -55,6 +55,8 @@ TOOL_DEFINITIONS = (
     ("process_run.get", "process_run", False, "R1"),
     ("process_run.list_for_attempt", "process_run", False, "R1"),
     ("process_run.cancel", "process_run", True, "R2"),
+    ("external_cli.context.preview", "external_cli", False, "R1"),
+    ("external_cli.dry_run", "external_cli", True, "R2"),
 )
 
 

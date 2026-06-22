@@ -43,6 +43,7 @@ def create_text_artifact(
         checksum=sha256(data).hexdigest(),
     )
     session.add(ref)
+    session.flush()
     return ref
 
 

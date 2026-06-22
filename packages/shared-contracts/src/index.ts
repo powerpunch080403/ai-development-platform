@@ -154,3 +154,57 @@ export type ProcessRunDto = {
   created_at: string;
   updated_at: string;
 };
+
+export type ExternalCliAdapterKind =
+  | "external_cli_dry_run"
+  | "codex_cli"
+  | "antigravity_cli"
+  | "custom_cli";
+
+export type ExternalCliAdapterStatus =
+  | "not_configured"
+  | "available"
+  | "unavailable"
+  | "unsupported"
+  | "failed";
+
+export type ExternalCliContextPackageDto = {
+  id: string;
+  task_attempt_id: string;
+  task_id: string;
+  project_id: string;
+  repository_id: string;
+  worker_run_id?: string | null;
+  git_worktree_id: string;
+  worktree_path: string;
+  branch_name: string;
+  base_branch: string;
+  base_commit_sha: string;
+  task_title: string;
+  task_instructions: string;
+  constraints: string[];
+  allowed_working_directory: string;
+  forbidden_actions: string[];
+  approval_review_boundary: string;
+  artifact_ids: string[];
+  created_at: string;
+};
+
+export type ExternalCliRunRequestDto = {
+  adapter_kind: ExternalCliAdapterKind;
+  task_attempt_id: string;
+  worker_id: string;
+  dry_run?: boolean;
+};
+
+export type ExternalCliRunResultDto = {
+  worker_run_id: string;
+  process_run_id?: string | null;
+  status: string;
+  context_artifact_id?: string | null;
+  report_artifact_id?: string | null;
+  stdout_artifact_id?: string | null;
+  stderr_artifact_id?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+};

@@ -10,6 +10,7 @@
 - Codex CLI Owner Adapter
 - Antigravity CLI Worker Adapter
 - External CLI Worker Adapter
+- **External CLI Dry Run Adapter**: CLI Adapter의 Context Package 전달 및 Process Runner 연동 계약(Contract)을 실제 AI 모델 호출 없이 안전하게 검증하는 용도
 
 ## 중요한 경계
 
@@ -27,3 +28,11 @@
 - timeout 및 stdout/stderr 아티팩트 저장을 지원한다.
 - API 키 등 민감정보 마스킹(Redaction)을 수행한다.
 - **아직 실제 Codex/Antigravity CLI를 실행하지 않으며, 임의 명령어 실행 UI도 존재하지 않는다.**
+
+## External CLI Adapter Contract Baseline
+
+현재 저장소에는 외부 CLI와 통신하기 위한 계약의 기반이 구현되어 있다.
+- 실제 AI CLI를 실행하지 않고, 계약과 데이터 흐름을 검증하기 위한 `external_cli_dry_run` Adapter가 구현되어 있다.
+- Dry-run은 서버에서 지정한 안전한 고정 명령어만 실행하며, 레포지토리 파일이나 브랜치를 변경하지 않는다.
+- `TaskAttempt` 및 Worker/Process Run 간의 연결, Context Package 아티팩트의 생성 및 저장이 검증되었다.
+- 실제 동작(파일 변경, 결과 Commit 생성 등)은 Dry-run 범위를 벗어나며, 후속 단계에서 다루게 된다.

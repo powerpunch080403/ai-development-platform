@@ -19,7 +19,7 @@ import type {
   RunMockWorkerRequest, RunMockWorkerResponse,
   StartManualWorkerRequest, StartManualWorkerResponse,
   SubmitManualWorkerRequest, SubmitManualWorkerResponse,
-  FailWorkerRunRequest, CancelWorkerRunRequest,
+  FailWorkerRunRequest, CancelWorkerRunRequest, ExternalCliRunResultDto,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -136,5 +136,6 @@ export function startManualWorker(attemptId:string, input:StartManualWorkerReque
 export function submitManualWorker(attemptId:string, input:SubmitManualWorkerRequest):Promise<SubmitManualWorkerResponse>{return request<SubmitManualWorkerResponse>(`/task-attempts/${attemptId}/manual-worker/submit`,{method:"POST",body:JSON.stringify(input)})}
 export function failWorkerRun(runId:string, input:FailWorkerRunRequest):Promise<{status:string}>{return request<{status:string}>(`/worker-runs/${runId}/fail`,{method:"POST",body:JSON.stringify(input)})}
 export function cancelWorkerRun(runId:string, input:CancelWorkerRunRequest):Promise<{status:string}>{return request<{status:string}>(`/worker-runs/${runId}/cancel`,{method:"POST",body:JSON.stringify(input)})}
+export function externalCliDryRun(attemptId:string, workerId:string): Promise<ExternalCliRunResultDto>{return request<ExternalCliRunResultDto>(`/task-attempts/${attemptId}/external-cli/dry-run`,{method:"POST",body:JSON.stringify({adapter_kind:"external_cli_dry_run",worker_id:workerId,dry_run:true})})}
 export function listWorkerRuns(attemptId:string):Promise<WorkerRunDto[]>{return request<WorkerRunDto[]>(`/task-attempts/${attemptId}/worker-runs`)}
 export function getWorkerRun(runId:string):Promise<WorkerRunDto>{return request<WorkerRunDto>(`/worker-runs/${runId}`)}

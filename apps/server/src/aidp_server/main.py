@@ -14,6 +14,7 @@ from aidp_server.worktrees import router as worktrees_router
 from aidp_server.reviews import router as reviews_router
 from aidp_server.system import router as system_router
 from aidp_server.approval_routes import router as approvals_router
+from aidp_server.external_cli_adapters import router as external_cli_adapters_router
 
 
 def create_app() -> FastAPI:
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(worktrees_router)
     app.include_router(reviews_router)
     app.include_router(approvals_router)
+    app.include_router(external_cli_adapters_router)
     return app
 
 
