@@ -27,6 +27,11 @@ from aidp_server.db.models import (
     WorkerStatus,
 )
 from aidp_server.db.session import get_session
+from aidp_server.state_transitions import (
+    StateTransitionError,
+    assert_public_task_attempt_transition,
+    assert_public_task_transition,
+)
 
 LEASE_TTL = timedelta(minutes=5)
 RELEASE_STATUSES = {
@@ -63,6 +68,8 @@ class UpdateWorkItemStatusRequest(BaseModel):
 
 
 class CreateTaskRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     repository_id: str | None = None
     work_item_id: str | None = None
     conversation_id: str | None = None
@@ -80,7 +87,7 @@ class UpdateTaskStatusRequest(BaseModel):
 
 
 class CreateAttemptRequest(BaseModel):
-    status: TaskAttemptStatus = TaskAttemptStatus.CREATED
+    model_config = ConfigDict(extra="ignore")
 
 
 class UpdateAttemptStatusRequest(BaseModel):
@@ -311,6 +318,21 @@ def audit(session: Session, current: Any, event: str, message: str, **links: Any
     )
 
 
+def deny_transition(
+    session: Session, current: Any, error: StateTransitionError, **links: Any
+) -> None:
+    audit(
+        session,
+        current,
+        "state_transition.denied",
+        str(error),
+        metadata=error.detail(),
+        **links,
+    )
+    session.commit()
+    raise HTTPException(status_code=409, detail=error.detail())
+
+
 @router.post("/projects/{project_id}/work-items", response_model=WorkItemView, status_code=201)
 def create_work_item(
     project_id: str,
@@ -469,6 +491,10 @@ def update_task(
     session: Annotated[Session, Depends(get_session)],
 ) -> TaskView:
     task = owned(session, Task, task_id, current.user.id)
+    try:
+        assert_public_task_transition(task.status, request.status)
+    except StateTransitionError as error:
+        deny_transition(session, current, error, project_id=task.project_id)
     now = datetime.now(timezone.utc)
     task.status = request.status
     task.error_code = request.error_code
@@ -514,7 +540,7 @@ def create_attempt(
         local_user_id=current.user.id,
         project_id=task.project_id,
         repository_id=task.repository_id,
-        status=request.status,
+        status=TaskAttemptStatus.CREATED,
         attempt_number=number,
     )
     session.add(attempt)
@@ -562,6 +588,16 @@ def update_attempt(
     session: Annotated[Session, Depends(get_session)],
 ) -> AttemptView:
     a = owned(session, TaskAttempt, attempt_id, current.user.id)
+    try:
+        assert_public_task_attempt_transition(a.status, request.status)
+    except StateTransitionError as error:
+        deny_transition(
+            session,
+            current,
+            error,
+            project_id=a.project_id,
+            repository_id=a.repository_id,
+        )
     now = datetime.now(timezone.utc)
     a.status = request.status
     a.result_summary = request.result_summary

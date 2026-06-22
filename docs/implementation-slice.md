@@ -27,4 +27,6 @@ README Edit Golden Path는 pairing부터 Project/Task/Attempt/claim/worktree/man
 
 이번 Slice의 Tool Call은 실행기가 아니라 추적 Envelope다. 실제 Owner LLM/CLI, Policy/Approval 실행, Worker와 Tool 부작용은 후속이며 Conversation History, Run State와 장기 Memory는 섞지 않는다.
 
+Task와 TaskAttempt 생성 상태는 각각 `draft`, `created`로 서버가 고정한다. Generic status endpoint는 운영 상태의 제한된 전이만 허용하며 `committed`, `accepted`, `merged`, `completed` 같은 보호 결과 상태는 commit, review, approval와 squash merge 전용 application service에서만 생성한다. 허용되지 않은 상태 전이는 409로 거부하고 audit event로 기록한다.
+
 실제 AI Worker/Adapter와 중앙 Approval Group/merge queue는 없으며 remote push도 하지 않는다. Worktree cleanup과 고급 충돌 복구는 후속이다.
