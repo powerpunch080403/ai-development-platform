@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     enable_experimental_antigravity_cli: bool = False
     antigravity_cli_path: str | None = None
     antigravity_cli_timeout_seconds: int = 300
+    antigravity_cli_allow_dangerous_skip_permissions: bool = False
 
     @property
     def session_cookie_secure(self) -> bool:

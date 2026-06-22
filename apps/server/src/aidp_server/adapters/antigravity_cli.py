@@ -47,6 +47,23 @@ def check_antigravity_cli_available(settings: Settings) -> dict[str, str]:
     return {"status": "available"}
 
 
+def build_agy_print_command(
+    *,
+    prompt: str,
+    worktree_path: str,
+    timeout_seconds: int,
+    allow_dangerous_skip_permissions: bool,
+) -> list[str]:
+    args = [
+        "--print", prompt,
+        "--add-dir", worktree_path,
+        "--print-timeout", f"{timeout_seconds}s"
+    ]
+    if allow_dangerous_skip_permissions:
+        args.append("--dangerously-skip-permissions")
+    return args
+
+
 async def execute_antigravity_cli_worker(
     session: Session,
     settings: Settings,
@@ -108,11 +125,33 @@ async def execute_antigravity_cli_worker(
     # We do NOT pass executable or args from the HTTP request body.
     cli_path = settings.antigravity_cli_path
     
+    controlled_prompt = (
+        "You are running inside an isolated git worktree.\n\n"
+        "Task:\nAppend exactly one line to README.md:\n\n"
+        "\"Controlled AGY worker test completed.\"\n\n"
+        "Rules:\n"
+        "- Modify README.md only.\n"
+        "- Do not create new files.\n"
+        "- Do not modify any other file.\n"
+        "- Do not run network commands.\n"
+        "- Do not read or modify .env files.\n"
+        "- Do not modify git history.\n"
+        "- Do not commit changes.\n"
+        "- Stop after editing README.md."
+    )
+
+    arguments = build_agy_print_command(
+        prompt=controlled_prompt,
+        worktree_path=worktree.worktree_path,
+        timeout_seconds=settings.antigravity_cli_timeout_seconds,
+        allow_dangerous_skip_permissions=settings.antigravity_cli_allow_dangerous_skip_permissions,
+    )
+
     process_run = await execute_process_async(
         session=session,
         settings=settings,
         executable=cli_path,
-        arguments=[],  # Fixed args for safety in this slice
+        arguments=arguments,
         working_directory=worktree.worktree_path,
         timeout_seconds=settings.antigravity_cli_timeout_seconds,
         local_user_id=local_user_id,

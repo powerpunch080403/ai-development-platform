@@ -34,14 +34,15 @@
 - User-approved squash merge
 - Safe worktree cleanup
 - Process Runner Baseline (향후 CLI Adapter 연동용 안전한 프로세스 실행)
-- External CLI Adapter Contract Baseline (Dry-Run 검증)
 - Server-enforced Task/TaskAttempt state transition guards
 - Task write-scope and pre-commit changed-path validation
 - Unified Action Policy Catalog (Action risk level & tool registry sync)
 - Policy Decision enforcement on major side-effect APIs
 - Approval Fingerprint Arguments Hash (Execution arguments validation)
 - External CLI Active Run Guard (TaskAttempt execution concurrency control)
-- Experimental Antigravity CLI Worker Adapter Baseline
+- Remote Process Runner with Env Allowlist
+- External CLI Contract (Dry Run)
+- Experimental Antigravity CLI Adapter (Fake Shim default, Real `agy` opt-in for Controlled README test)
 
 ### Not implemented yet
 

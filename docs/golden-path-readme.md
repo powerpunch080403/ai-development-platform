@@ -53,6 +53,26 @@ create worktree raw
 → commit result raw
 ```
 
+## D. Controlled AGY Worker Test
+
+실제 `agy` CLI를 활용하여 격리된 Worktree에서 README.md 한 줄 추가를 검증하는 실험적 흐름이다. 기본적으로 비활성화되어 있으며, 명시적 환경 설정으로 Opt-in 해야 실행할 수 있다.
+
+```text
+pairing
+→ project/repository
+→ restricted task (README.md only, no new files)
+→ attempt
+→ worker register (antigravity_cli)
+→ claim
+→ controlled run-experimental (controlled prompt, danger flags disabled)
+→ agy edits README.md
+→ apply worktree result (write_scope check)
+→ review
+→ approve
+→ squash merge
+→ cleanup
+```
+
 ## 자동 E2E 검증
 
 ```powershell
@@ -60,6 +80,7 @@ cd apps/server
 uv run pytest tests/test_golden_path_readme_e2e.py
 uv run pytest tests/test_mock_worker_adapter.py
 uv run pytest tests/test_manual_worker_adapter.py
+uv run pytest tests/test_antigravity_cli_adapter.py
 ```
 
-테스트는 시스템 임시 디렉터리에 Git repository를 만들고 pairing부터 squash merge까지 실제 API와 Git 명령으로 검증한다. 구현 repository의 HEAD는 테스트 전후 동일해야 한다.
+테스트는 시스템 임시 디렉터리에 Git repository를 만들고 pairing부터 squash merge까지 실제 API와 Git 명령으로 검증한다. 구현 repository의 HEAD는 테스트 전후 동일해야 한다. `test_antigravity_cli_adapter.py`의 실제 `agy` 검증은 `AIDP_RUN_REAL_AGY_TESTS=true` 환경변수가 있을 때만 실행된다.
