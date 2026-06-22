@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     database_url: str | None = None
     web_origin: str = "http://localhost:5173"
     session_cookie_name: str = "aidp_session"
+    
+    enable_experimental_antigravity_cli: bool = False
+    antigravity_cli_path: str | None = None
+    antigravity_cli_timeout_seconds: int = 300
 
     @property
     def session_cookie_secure(self) -> bool:

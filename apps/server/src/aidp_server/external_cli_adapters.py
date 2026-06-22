@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from aidp_server.adapters.external_cli_contract import build_external_cli_context_package
 from aidp_server.adapters.external_cli_dry_run import execute_external_cli_dry_run
+from aidp_server.adapters.antigravity_cli import check_antigravity_cli_available, execute_antigravity_cli_worker
 from aidp_server.auth import CurrentAuth
 from aidp_server.config import Settings, get_settings
 from aidp_server.db.models import GitWorktree, Task, TaskAttempt
@@ -20,6 +21,12 @@ class ExternalCliDryRunRequest(BaseModel):
     adapter_kind: Literal["external_cli_dry_run"] = "external_cli_dry_run"
     worker_id: str
     dry_run: Literal[True] = True
+
+
+class ExternalCliRunExperimentalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    adapter_kind: Literal["antigravity_cli"] = "antigravity_cli"
+    worker_id: str
 
 
 class ExternalCliRunResult(BaseModel):
@@ -70,6 +77,33 @@ async def external_cli_dry_run(
 ) -> dict[str, object]:
     attempt = get_owned_attempt(session, task_attempt_id, current.user.id)
     result = await execute_external_cli_dry_run(
+        session, settings, attempt, current.user.id, request.worker_id
+    )
+    session.commit()
+    return result
+
+
+@router.get("/external-cli/antigravity/status")
+def get_antigravity_cli_status(
+    current: CurrentAuth,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    return check_antigravity_cli_available(settings)
+
+
+@router.post(
+    "/task-attempts/{task_attempt_id}/external-cli/antigravity/run-experimental",
+    response_model=ExternalCliRunResult,
+)
+async def run_antigravity_cli_experimental(
+    task_attempt_id: str,
+    request: ExternalCliRunExperimentalRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, object]:
+    attempt = get_owned_attempt(session, task_attempt_id, current.user.id)
+    result = await execute_antigravity_cli_worker(
         session, settings, attempt, current.user.id, request.worker_id
     )
     session.commit()

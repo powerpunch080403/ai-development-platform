@@ -139,3 +139,5 @@ export function cancelWorkerRun(runId:string, input:CancelWorkerRunRequest):Prom
 export function externalCliDryRun(attemptId:string, workerId:string): Promise<ExternalCliRunResultDto>{return request<ExternalCliRunResultDto>(`/task-attempts/${attemptId}/external-cli/dry-run`,{method:"POST",body:JSON.stringify({adapter_kind:"external_cli_dry_run",worker_id:workerId,dry_run:true})})}
 export function listWorkerRuns(attemptId:string):Promise<WorkerRunDto[]>{return request<WorkerRunDto[]>(`/task-attempts/${attemptId}/worker-runs`)}
 export function getWorkerRun(runId:string):Promise<WorkerRunDto>{return request<WorkerRunDto>(`/worker-runs/${runId}`)}
+export function antigravityCliStatus(): Promise<{status:string,error_message?:string}>{return request<{status:string,error_message?:string}>("/external-cli/antigravity/status")}
+export function runAntigravityCliExperimental(attemptId:string, workerId:string): Promise<ExternalCliRunResultDto>{return request<ExternalCliRunResultDto>(`/task-attempts/${attemptId}/external-cli/antigravity/run-experimental`,{method:"POST",body:JSON.stringify({adapter_kind:"antigravity_cli",worker_id:workerId})})}

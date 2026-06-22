@@ -41,6 +41,7 @@
 - Policy Decision enforcement on major side-effect APIs
 - Approval Fingerprint Arguments Hash (Execution arguments validation)
 - External CLI Active Run Guard (TaskAttempt execution concurrency control)
+- Experimental Antigravity CLI Worker Adapter Baseline
 
 ### Not implemented yet
 

@@ -59,6 +59,7 @@ ACTION_CATALOG: list[ActionPolicyDefinition] = [
     ActionPolicyDefinition("process_run.cancel", "R2", "allow", "Cancel process run"),
     ActionPolicyDefinition("external_cli.context.preview", "R1", "allow", "Preview external CLI context"),
     ActionPolicyDefinition("external_cli.dry_run", "R2", "allow", "Dry run external CLI"),
+    ActionPolicyDefinition("external_cli.run_antigravity_experimental", "R2", "allow", "Run experimental Antigravity CLI"),
 ]
 
 def get_action_policy(action_type: str) -> ActionPolicyDefinition | None:
