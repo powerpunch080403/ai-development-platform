@@ -21,6 +21,7 @@ import type {
   SubmitManualWorkerRequest, SubmitManualWorkerResponse,
   FailWorkerRunRequest, CancelWorkerRunRequest, ExternalCliRunResultDto,
   SettingsSummaryDto,
+  ApprovalRequestDto,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -145,3 +146,4 @@ export function listWorkerRuns(attemptId:string):Promise<WorkerRunDto[]>{return 
 export function getWorkerRun(runId:string):Promise<WorkerRunDto>{return request<WorkerRunDto>(`/worker-runs/${runId}`)}
 export function antigravityCliStatus(): Promise<{status:string,error_message?:string}>{return request<{status:string,error_message?:string}>("/external-cli/antigravity/status")}
 export function runAntigravityCliExperimental(attemptId:string, workerId:string): Promise<ExternalCliRunResultDto>{return request<ExternalCliRunResultDto>(`/task-attempts/${attemptId}/external-cli/antigravity/run-experimental`,{method:"POST",body:JSON.stringify({adapter_kind:"antigravity_cli",worker_id:workerId})})}
+export function listApprovalRequests(): Promise<ApprovalRequestDto[]> { return request<ApprovalRequestDto[]>("/approval-requests"); }
