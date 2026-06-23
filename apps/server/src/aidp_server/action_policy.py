@@ -25,6 +25,7 @@ ACTION_CATALOG: list[ActionPolicyDefinition] = [
     ActionPolicyDefinition("task.list", "R0", "allow", "List tasks"),
     ActionPolicyDefinition("task.create", "R1", "allow", "Create task"),
     ActionPolicyDefinition("task.update_status", "R1", "allow", "Update task status"),
+    ActionPolicyDefinition("worker.start_task_attempt", "R1", "allow", "Start task attempt via owner tool"),
     ActionPolicyDefinition("task_attempt.create", "R1", "allow", "Create task attempt"),
     ActionPolicyDefinition("task_attempt.update_status", "R1", "allow", "Update task attempt status"),
     ActionPolicyDefinition("worker.register", "R1", "allow", "Register worker"),

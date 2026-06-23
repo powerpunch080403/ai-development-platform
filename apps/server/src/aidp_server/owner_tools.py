@@ -15,7 +15,14 @@ from aidp_server.db.models import (
     ToolCallerType,
     ToolCallStatus,
     ToolRegistryEntry,
+    TaskAttempt,
+    TaskAttemptStatus,
+    WorkerRun,
+    RecordStatus,
+    Worker,
+    WorkerStatus,
 )
+from sqlalchemy import func
 from aidp_server.tool_registry import seed_tool_registry
 
 
@@ -44,7 +51,12 @@ def apply_authority_envelope(session: Session, tool_call: ToolCall, mode: str = 
     # Team Mode: TODO: central policy will restrict visible context/files before Owner reasoning.
 
     # Allow specific tools for this slice
-    if tool_call.tool_name in ["project.list", "task.list", "task.create"]:
+    if tool_call.tool_name in [
+        "project.list",
+        "task.list",
+        "task.create",
+        "worker.start_task_attempt",
+    ]:
         return True
 
     # Reject everything else for now
@@ -104,6 +116,102 @@ def execute_owner_tool(session: Session, tool_call: ToolCall) -> dict[str, Any]:
             metadata={"task_id": task.id, "source": "owner_tool"},
         )
         return {"task_id": task.id}
+
+    elif tool_call.tool_name == "worker.start_task_attempt":
+        args = tool_call.arguments_json or {}
+        task_id = args.get("task_id")
+        worker_adapter = args.get("worker_adapter", "mock")
+
+        if not task_id:
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "invalid_arguments"
+            tool_call.error_message = "task_id is required"
+            return {"error": "task_id is required"}
+
+        task = session.get(Task, task_id)
+        if not task or task.local_user_id != tool_call.user_id:
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "task_not_found"
+            tool_call.error_message = "Task not found or access denied"
+            return {"error": "task_not_found"}
+
+        if worker_adapter == "agy":
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "unsupported_worker_adapter"
+            tool_call.error_message = "AGY adapter is not supported in this slice"
+            return {"error": "unsupported_worker_adapter"}
+
+        worker = session.scalars(select(Worker).where(Worker.worker_kind == worker_adapter)).first()
+        if not worker:
+            worker = Worker(
+                local_user_id=tool_call.user_id,
+                device_id="system",
+                display_name=f"System {worker_adapter} Worker",
+                worker_kind=worker_adapter,
+                status=WorkerStatus.AVAILABLE,
+                capabilities_json={},
+            )
+            session.add(worker)
+            session.flush()
+
+        attempt_number = (
+            session.scalar(
+                select(func.coalesce(func.max(TaskAttempt.attempt_number), 0)).where(
+                    TaskAttempt.task_id == task.id
+                )
+            )
+            + 1
+        )
+
+        attempt = TaskAttempt(
+            task_id=task.id,
+            local_user_id=tool_call.user_id,
+            project_id=task.project_id,
+            repository_id=task.repository_id,
+            worker_id=worker.id,
+            claimed_by_worker_id=worker.id,
+            status=TaskAttemptStatus.CREATED,
+            attempt_number=attempt_number,
+        )
+        session.add(attempt)
+        session.flush()
+
+        worker_run = WorkerRun(
+            local_user_id=tool_call.user_id,
+            project_id=task.project_id,
+            repository_id=task.repository_id,
+            task_id=task.id,
+            task_attempt_id=attempt.id,
+            worker_id=worker.id,
+            adapter_kind=worker_adapter,
+            status=RecordStatus.CREATED,
+        )
+        session.add(worker_run)
+        session.flush()
+
+        record_audit_event(
+            session,
+            event_type="owner_tool_call.completed",
+            message="worker.start_task_attempt completed",
+            local_user_id=tool_call.user_id,
+            project_id=task.project_id,
+            agent_run_id=tool_call.agent_run_id,
+            tool_call_id=tool_call.id,
+            metadata={
+                "fresh_worker_context": True,
+                "previous_worker_context_reused": False,
+                "continuity_source": "owner_authored_task_packet",
+                "task_attempt_id": attempt.id,
+                "worker_run_id": worker_run.id,
+            },
+        )
+
+        return {
+            "task_attempt_id": attempt.id,
+            "worker_run_id": worker_run.id,
+            "status": "queued",
+            "fresh_worker_context": True,
+        }
 
     raise ValueError(f"Unsupported tool: {tool_call.tool_name}")
 

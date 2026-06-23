@@ -389,6 +389,27 @@ export function PersonalModeDashboard() {
                 <p><strong>Instructions:</strong></p>
                 <pre>{selectedTask.instructions}</pre>
                 <p><strong>Write Scope:</strong> {JSON.stringify(selectedTask.write_scope)}</p>
+
+                {attempts.length > 0 && (
+                  <div style={{ marginTop: "1rem", padding: "1rem", backgroundColor: "#f9f9f9", borderRadius: "4px" }}>
+                    <h5>Latest Attempt</h5>
+                    {(() => {
+                      const latestAttempt = attempts[attempts.length - 1];
+                      const latestRun = workerRuns.length > 0 ? workerRuns[0] : null;
+                      return (
+                        <div>
+                          <p><strong>Attempt ID:</strong> <code>{latestAttempt.id.substring(0, 8)}</code> (Status: {latestAttempt.status})</p>
+                          {latestRun && (
+                            <p><strong>Worker Run ID:</strong> <code>{latestRun.id.substring(0, 8)}</code> (Status: {latestRun.status}, Adapter: {latestRun.adapter_kind})</p>
+                          )}
+                          <div style={{ marginTop: "0.5rem", display: "inline-block", backgroundColor: "#e8f5e9", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85em", color: "#2e7d32" }}>
+                            ✓ fresh_worker_context = true
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             ) : (
               <p className="empty-state">No task selected.</p>
