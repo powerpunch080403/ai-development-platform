@@ -275,6 +275,13 @@ class ApprovalStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class ApprovalMode(StrEnum):
+    ASK_FOR_APPROVAL = "ask_for_approval"
+    APPROVE_ON_MY_BEHALF = "approve_on_my_behalf"
+    FULL_ACCESS = "full_access"
+    CUSTOM = "custom"
+
+
 class PolicyDecisionResult(StrEnum):
     ALLOW = "allow"
     APPROVAL_REQUIRED = "approval_required"
@@ -403,6 +410,7 @@ class Project(TimestampMixin, Base):
         default=ProjectStatus.ACTIVE,
         nullable=False,
     )
+    working_scope_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
@@ -967,6 +975,30 @@ class PolicyDecision(TimestampMixin, Base):
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     context_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
+
+
+class Grant(TimestampMixin, Base):
+    __tablename__ = "grants"
+    __table_args__ = (
+        Index("ix_grants_local_user_id", "local_user_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
+    approval_mode: Mapped[ApprovalMode] = mapped_column(
+        enum_column(ApprovalMode), nullable=False, default=ApprovalMode.ASK_FOR_APPROVAL
+    )
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"))
+    repository_id: Mapped[str | None] = mapped_column(ForeignKey("project_repositories.id"))
+    project_working_scope_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    risk_ceiling: Mapped[RiskLevel] = mapped_column(
+        enum_column(RiskLevel), nullable=False, default=RiskLevel.R1
+    )
+    allow_scope_expansion: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    allow_new_files: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    allow_protected_paths: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    allow_high_risk_changes: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    allow_danger_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ProcessRun(TimestampMixin, Base):

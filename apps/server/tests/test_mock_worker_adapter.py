@@ -66,7 +66,7 @@ def test_mock_worker_adapter_e2e(app_harness: AppHarness, tmp_path: Path) -> Non
     worker = app_harness.client.post(
         "/workers", json={"display_name": "Mock Worker", "worker_kind": "mock"}
     ).json()
-    claimed = app_harness.client.post(
+    app_harness.client.post(
         f"/workers/{worker['id']}/claim", json={"task_attempt_id": attempt["id"]}
     ).json()
     

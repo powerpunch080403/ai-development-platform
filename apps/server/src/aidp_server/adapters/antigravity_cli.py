@@ -22,6 +22,7 @@ from aidp_server.db.models import (
     Task,
     TaskAttempt,
     WorkerRun,
+    Grant,
     utc_now,
 )
 from aidp_server.process_runner import execute_process_async
@@ -164,11 +165,14 @@ async def execute_antigravity_cli_worker(
             "- Stop after editing README.md."
         )
 
+    grant = session.scalars(select(Grant).where(Grant.project_id == attempt.project_id, Grant.local_user_id == local_user_id)).first()
+    allow_danger = settings.antigravity_cli_allow_dangerous_skip_permissions and grant is not None and grant.allow_danger_flag
+
     arguments = build_agy_print_command(
         prompt=controlled_prompt,
         worktree_path=worktree.worktree_path,
         timeout_seconds=settings.antigravity_cli_timeout_seconds,
-        allow_dangerous_skip_permissions=settings.antigravity_cli_allow_dangerous_skip_permissions,
+        allow_dangerous_skip_permissions=allow_danger,
     )
 
     process_run = await execute_process_async(

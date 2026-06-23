@@ -23,6 +23,7 @@ from aidp_server.db.models import (
     WorkItemStatus,
     WorkItemType,
     Worker,
+    WorkerRun,
     WorkerKind,
     WorkerStatus,
 )

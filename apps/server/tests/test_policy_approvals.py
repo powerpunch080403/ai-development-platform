@@ -1,5 +1,5 @@
 from pathlib import Path
-from aidp_server.db.models import ApprovalRequest, PolicyDecision
+from aidp_server.db.models import ApprovalRequest
 from aidp_server.policy import evaluate_action
 from conftest import AppHarness
 from test_reviews import committed

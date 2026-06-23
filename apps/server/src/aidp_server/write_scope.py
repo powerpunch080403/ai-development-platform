@@ -6,7 +6,8 @@ from typing import Any, Mapping
 DEFAULT_WRITE_SCOPE: dict[str, Any] = {
     "mode": "paths",
     "paths": ["."],
-    "allow_new_files": True,
+    "allow_new_files": False,
+    "allow_protected_paths": False,
 }
 
 
@@ -59,6 +60,7 @@ def normalize_write_scope(raw: Mapping[str, object] | None) -> dict[str, Any]:
             "mode": DEFAULT_WRITE_SCOPE["mode"],
             "paths": list(DEFAULT_WRITE_SCOPE["paths"]),
             "allow_new_files": DEFAULT_WRITE_SCOPE["allow_new_files"],
+            "allow_protected_paths": DEFAULT_WRITE_SCOPE["allow_protected_paths"],
         }
     if raw.get("mode") != "paths":
         raise WriteScopeError('write_scope mode must be "paths"')
@@ -72,13 +74,19 @@ def normalize_write_scope(raw: Mapping[str, object] | None) -> dict[str, Any]:
         normalized = _normalize_path(path)
         if normalized not in normalized_paths:
             normalized_paths.append(normalized)
-    allow_new_files = raw.get("allow_new_files")
+    allow_new_files = raw.get("allow_new_files", False)
     if not isinstance(allow_new_files, bool):
         raise WriteScopeError("write_scope allow_new_files must be a boolean")
+
+    allow_protected_paths = raw.get("allow_protected_paths", False)
+    if not isinstance(allow_protected_paths, bool):
+        raise WriteScopeError("write_scope allow_protected_paths must be a boolean")
+
     return {
         "mode": "paths",
         "paths": normalized_paths,
         "allow_new_files": allow_new_files,
+        "allow_protected_paths": allow_protected_paths,
     }
 
 
@@ -91,16 +99,31 @@ def _normalize_changed_path(path: str) -> str:
 
 
 def _is_sensitive_path(path: str) -> bool:
-    return any(part == ".env" or part.startswith(".env.") for part in path.split("/"))
+    parts = path.split("/")
+    if not parts:
+        return False
+    filename = parts[-1]
+
+    if filename == ".env" or filename.startswith(".env."):
+        return True
+
+    sensitive_dirs = {"secrets", "artifacts", "credentials", "runtime-data"}
+    if any(part in sensitive_dirs for part in parts):
+        return True
+
+    if filename.endswith(".sqlite") or filename.endswith(".db") or filename.endswith(".key"):
+        return True
+
+    return False
 
 
 def is_path_allowed(relative_path: str, scope: Mapping[str, object], *, is_new_file: bool) -> bool:
     path = _normalize_changed_path(relative_path)
-    if _is_sensitive_path(path):
+    if _is_sensitive_path(path) and not scope.get("allow_protected_paths"):
         return False
-    if is_new_file and scope["allow_new_files"] is not True:
+    if is_new_file and scope.get("allow_new_files") is not True:
         return False
-    for allowed_value in scope["paths"] if isinstance(scope["paths"], list) else []:
+    for allowed_value in scope.get("paths", []) if isinstance(scope.get("paths", []), list) else []:
         if not isinstance(allowed_value, str):
             continue
         if allowed_value == ".":

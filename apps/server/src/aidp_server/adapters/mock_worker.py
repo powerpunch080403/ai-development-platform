@@ -1,10 +1,10 @@
 from pathlib import Path
 from sqlalchemy.orm import Session
-from aidp_server.db.models import TaskAttempt, Task, Worker, WorkerRun, RecordStatus, ArtifactKind, ArtifactRef, new_uuid, GitWorktree
+from aidp_server.db.models import TaskAttempt, Task, Worker, WorkerRun, RecordStatus, ArtifactKind, ArtifactRef, GitWorktree
 from aidp_server.worktrees import apply_worktree_result
 from aidp_server.artifacts import create_text_artifact
 from aidp_server.config import get_settings
-from aidp_server.db.models import GitWorktreeStatus, TaskAttemptStatus, TaskStatus
+from aidp_server.db.models import GitWorktreeStatus, TaskAttemptStatus
 from aidp_server.db.models import utc_now
 from aidp_server.write_scope import (
     ChangedPath,
@@ -93,7 +93,7 @@ def run_mock_worker(session: Session, attempt: TaskAttempt, commit_message: str 
             normalize_write_scope(task.write_scope_json),
         )
 
-        log_lines.append(f"Action: append_to_file")
+        log_lines.append("Action: append_to_file")
         log_lines.append(f"Path: {rel_path}")
 
         # Ensure parent exists
@@ -127,7 +127,7 @@ def run_mock_worker(session: Session, attempt: TaskAttempt, commit_message: str 
         return worker_run, artifact
         
     except Exception as e:
-        log_lines.append(f"Result: failed")
+        log_lines.append("Result: failed")
         log_lines.append(f"Error: {str(e)}")
         
         worker_run.status = RecordStatus.FAILED

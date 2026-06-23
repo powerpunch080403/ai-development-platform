@@ -1,5 +1,4 @@
 from conftest import AppHarness
-from aidp_server.db.models import ToolRegistryEntry
 
 from test_worktrees import auth
 

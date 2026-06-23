@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from aidp_server.db.models import GitWorktree, Task, TaskAttempt
+from aidp_server.db.models import GitWorktree, TaskAttempt
 from conftest import AppHarness
 from test_worktrees import auth, git, repo
 
@@ -73,7 +73,8 @@ def test_task_write_scope_defaults_and_round_trips(app_harness: AppHarness) -> N
     assert default_task["write_scope"] == {
         "mode": "paths",
         "paths": ["."],
-        "allow_new_files": True,
+        "allow_new_files": False,
+        "allow_protected_paths": False,
     }
     scoped_task = create_task(
         app_harness,
@@ -84,6 +85,7 @@ def test_task_write_scope_defaults_and_round_trips(app_harness: AppHarness) -> N
         "mode": "paths",
         "paths": ["README.md"],
         "allow_new_files": False,
+        "allow_protected_paths": False,
     }
 
 
@@ -148,11 +150,11 @@ def test_raw_commit_blocks_outside_scope_without_state_change(
     assert git(path, "rev-parse", "HEAD") == head_before
     with app_harness.session_factory() as session:
         stored_attempt = session.get(TaskAttempt, str(attempt["id"]))
-        stored_task = session.get(Task, str(task["id"]))
         stored_worktree = session.get(GitWorktree, str(worktree["id"]))
-        assert stored_attempt is not None and stored_attempt.status.value == "running_worker"
-        assert stored_task is not None and stored_task.status.value == "running"
-        assert stored_worktree is not None and stored_worktree.result_commit_sha is None
+        assert stored_attempt is not None and stored_attempt.status.value == "worker_failed"
+        assert stored_attempt.error_code == "scope_violation"
+        assert stored_worktree is not None and stored_worktree.status.value == "dirty_result"
+        assert stored_worktree.result_commit_sha is None
 
 
 def test_raw_commit_blocks_new_file_when_disallowed(
@@ -224,5 +226,6 @@ def test_external_cli_context_contains_write_scope(app_harness: AppHarness, tmp_
         "mode": "paths",
         "paths": ["README.md"],
         "allow_new_files": False,
+        "allow_protected_paths": False,
     }
     assert "Only modify files within the declared write_scope." in response.json()["constraints"]

@@ -1,9 +1,8 @@
 import asyncio
 from pathlib import Path
 from sqlalchemy.orm import Session
-import json
 
-from aidp_server.db.models import ProcessRun, ProcessRunStatus, utc_now, ProjectRepository, GitWorktree, TaskAttempt, ArtifactKind
+from aidp_server.db.models import ProcessRun, ProcessRunStatus, utc_now, ProjectRepository, GitWorktree, ArtifactKind
 from aidp_server.config import Settings
 from aidp_server.redaction import redact_args, redact_text
 from aidp_server.artifacts import create_text_artifact

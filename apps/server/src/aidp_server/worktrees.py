@@ -455,6 +455,13 @@ def commit_result(
     try:
         apply_worktree_result(session, settings, w, request.commit_message, current.user.id)
     except WriteScopeError as error:
+        w.status = GitWorktreeStatus.DIRTY_RESULT
+        if w.task_attempt_id:
+            attempt = session.get(TaskAttempt, w.task_attempt_id)
+            if attempt:
+                attempt.status = TaskAttemptStatus.WORKER_FAILED
+                attempt.error_code = "scope_violation"
+        session.commit()
         raise HTTPException(status_code=409, detail=error.detail())
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))

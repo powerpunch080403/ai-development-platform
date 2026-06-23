@@ -1,6 +1,4 @@
 import sys
-import pytest
-from uuid import uuid4
 
 from conftest import AppHarness
 from test_worktrees import auth

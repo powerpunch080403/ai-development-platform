@@ -1,5 +1,4 @@
 from pathlib import Path
-from sqlalchemy.orm import Session
 
 from aidp_server.db.models import WorkerRun, RecordStatus, TaskAttempt, utc_now
 from conftest import AppHarness

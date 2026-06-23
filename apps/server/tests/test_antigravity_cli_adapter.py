@@ -3,7 +3,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from aidp_server.db.models import ProcessRun, WorkerRun, TaskAttempt, Task, GitWorktree
+from aidp_server.db.models import WorkerRun, TaskAttempt, Task, GitWorktree
 from test_external_cli_adapter_contract import (
     authenticate,
     create_repository,

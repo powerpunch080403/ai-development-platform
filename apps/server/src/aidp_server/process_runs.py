@@ -6,8 +6,8 @@ from datetime import datetime
 import sys
 
 from aidp_server.db.session import get_session
-from aidp_server.db.models import ProcessRun, ProcessRunStatus, TaskAttempt
-from aidp_server.auth import get_current_auth, CurrentAuth
+from aidp_server.db.models import ProcessRun, TaskAttempt
+from aidp_server.auth import CurrentAuth
 from aidp_server.config import get_settings, Settings
 from aidp_server.process_runner import execute_process_async
 from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDecisionResult

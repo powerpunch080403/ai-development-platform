@@ -1,12 +1,11 @@
-from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from aidp_server.db.models import TaskAttempt, Task, Worker, WorkerRun, RecordStatus, ArtifactKind, ArtifactRef, GitWorktree
-from aidp_server.worktrees import apply_worktree_result, create_worktree
+from aidp_server.worktrees import apply_worktree_result
 from aidp_server.artifacts import create_text_artifact
-from aidp_server.config import get_settings, Settings
-from aidp_server.db.models import GitWorktreeStatus, TaskAttemptStatus, TaskStatus
+from aidp_server.config import Settings
+from aidp_server.db.models import GitWorktreeStatus, TaskAttemptStatus
 from aidp_server.db.models import utc_now
 from aidp_server.auth import CurrentAuth
 from aidp_server.write_scope import normalize_write_scope
