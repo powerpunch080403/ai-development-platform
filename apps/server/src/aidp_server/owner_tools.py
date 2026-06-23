@@ -56,6 +56,7 @@ def apply_authority_envelope(session: Session, tool_call: ToolCall, mode: str = 
         "task.list",
         "task.create",
         "worker.start_task_attempt",
+        "worker.run_task_attempt",
     ]:
         return True
 
@@ -211,6 +212,98 @@ def execute_owner_tool(session: Session, tool_call: ToolCall) -> dict[str, Any]:
             "worker_run_id": worker_run.id,
             "status": "queued",
             "fresh_worker_context": True,
+        }
+
+    elif tool_call.tool_name == "worker.run_task_attempt":
+        args = tool_call.arguments_json or {}
+        worker_run_id = args.get("worker_run_id")
+        task_attempt_id = args.get("task_attempt_id")
+
+        if not worker_run_id and not task_attempt_id:
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "invalid_arguments"
+            tool_call.error_message = "worker_run_id or task_attempt_id is required"
+            return {"error": "invalid_arguments"}
+
+        worker_run = None
+        attempt = None
+
+        if worker_run_id:
+            worker_run = session.get(WorkerRun, worker_run_id)
+            if worker_run:
+                attempt = session.get(TaskAttempt, worker_run.task_attempt_id)
+        elif task_attempt_id:
+            attempt = session.get(TaskAttempt, task_attempt_id)
+            if attempt:
+                worker_run = session.scalars(
+                    select(WorkerRun)
+                    .where(WorkerRun.task_attempt_id == attempt.id)
+                    .order_by(WorkerRun.created_at.desc())
+                ).first()
+
+        if not worker_run:
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "worker_run_not_found"
+            tool_call.error_message = "WorkerRun not found"
+            return {"error": "worker_run_not_found"}
+
+        if not attempt:
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "task_attempt_not_found"
+            tool_call.error_message = "TaskAttempt not found"
+            return {"error": "task_attempt_not_found"}
+
+        if worker_run.adapter_kind != "mock":
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "unsupported_worker_adapter"
+            tool_call.error_message = f"Unsupported worker adapter: {worker_run.adapter_kind}"
+            return {"error": "unsupported_worker_adapter"}
+
+        from aidp_server.db.models import utc_now
+
+        now = utc_now()
+
+        # update statuses
+        worker_run.status = RecordStatus.SUCCEEDED
+        worker_run.completed_at = now
+        worker_run.summary = "Mock execution completed by owner tool"
+
+        attempt.status = TaskAttemptStatus.ACCEPTED
+        attempt.completed_at = now
+        attempt.result_summary = "Mock execution completed by owner tool"
+
+        session.flush()
+
+        record_audit_event(
+            session,
+            event_type="owner_tool_call.completed",
+            message="worker.run_task_attempt completed",
+            local_user_id=tool_call.user_id,
+            project_id=attempt.project_id,
+            agent_run_id=tool_call.agent_run_id,
+            tool_call_id=tool_call.id,
+            metadata={
+                "tool_name": "worker.run_task_attempt",
+                "mode": "personal",
+                "authority_applied": True,
+                "owner_judgment_replaced": False,
+                "side_effect": True,
+                "fresh_worker_context": True,
+                "implicit_worker_memory": False,
+                "previous_worker_context_reused": False,
+                "continuity_source": "owner_authored_task_packet",
+                "task_attempt_id": attempt.id,
+                "worker_run_id": worker_run.id,
+            },
+        )
+
+        return {
+            "task_attempt_id": attempt.id,
+            "worker_run_id": worker_run.id,
+            "status": "succeeded",
+            "adapter": "mock",
+            "fresh_worker_context": True,
+            "previous_worker_context_reused": False,
         }
 
     raise ValueError(f"Unsupported tool: {tool_call.tool_name}")

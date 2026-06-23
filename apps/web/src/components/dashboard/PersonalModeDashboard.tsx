@@ -399,8 +399,12 @@ export function PersonalModeDashboard() {
                       return (
                         <div>
                           <p><strong>Attempt ID:</strong> <code>{latestAttempt.id.substring(0, 8)}</code> (Status: {latestAttempt.status})</p>
+                          {latestAttempt.result_summary && <p style={{ fontSize: "0.9em", color: "#555" }}><strong>Summary:</strong> {latestAttempt.result_summary}</p>}
                           {latestRun && (
-                            <p><strong>Worker Run ID:</strong> <code>{latestRun.id.substring(0, 8)}</code> (Status: {latestRun.status}, Adapter: {latestRun.adapter_kind})</p>
+                            <div>
+                              <p><strong>Worker Run ID:</strong> <code>{latestRun.id.substring(0, 8)}</code> (Status: {latestRun.status}, Adapter: {latestRun.adapter_kind})</p>
+                              {latestRun.summary && <p style={{ fontSize: "0.9em", color: "#555" }}><strong>Summary:</strong> {latestRun.summary}</p>}
+                            </div>
                           )}
                           <div style={{ marginTop: "0.5rem", display: "inline-block", backgroundColor: "#e8f5e9", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85em", color: "#2e7d32" }}>
                             ✓ fresh_worker_context = true
