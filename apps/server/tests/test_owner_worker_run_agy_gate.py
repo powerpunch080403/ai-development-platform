@@ -17,6 +17,17 @@ from aidp_server.db.models import (
 )
 from aidp_server.owner_tools import execute_owner_tool
 from conftest import AppHarness
+from fastapi import BackgroundTasks
+
+
+class MockBackgroundTasks(BackgroundTasks):
+    def __init__(self):
+        super().__init__()
+        self.tasks_added = []
+
+    def add_task(self, func, *args, **kwargs):
+        self.tasks_added.append((func, args, kwargs))
+
 
 def setup_test_data(db_session, project_id, adapter_kind="agy"):
     user = db_session.scalar(select(LocalUser).limit(1))
@@ -87,6 +98,7 @@ def setup_test_data(db_session, project_id, adapter_kind="agy"):
 
     return user, agent_run, task, attempt, worker_run
 
+
 def test_agy_worker_run_gate_disabled(app_harness: AppHarness):
     from test_conversations_and_tools import authenticate, create_project
 
@@ -94,7 +106,9 @@ def test_agy_worker_run_gate_disabled(app_harness: AppHarness):
     project_id = create_project(app_harness)
 
     with app_harness.session_factory() as db_session:
-        user, agent_run, task, attempt, worker_run = setup_test_data(db_session, project_id, adapter_kind="agy")
+        user, agent_run, task, attempt, worker_run = setup_test_data(
+            db_session, project_id, adapter_kind="agy"
+        )
 
         # default settings has allow_owner_agy_worker_run = False
         tool_call = ToolCall(
@@ -145,6 +159,7 @@ def test_agy_worker_run_gate_disabled(app_harness: AppHarness):
         assert audit_event.metadata_json.get("fresh_worker_context") is True
         assert audit_event.metadata_json.get("previous_worker_context_reused") is False
 
+
 def test_agy_worker_run_gate_cannot_be_enabled_by_payload(app_harness: AppHarness):
     from test_conversations_and_tools import authenticate, create_project
 
@@ -152,7 +167,9 @@ def test_agy_worker_run_gate_cannot_be_enabled_by_payload(app_harness: AppHarnes
     project_id = create_project(app_harness)
 
     with app_harness.session_factory() as db_session:
-        user, agent_run, task, attempt, worker_run = setup_test_data(db_session, project_id, adapter_kind="agy")
+        user, agent_run, task, attempt, worker_run = setup_test_data(
+            db_session, project_id, adapter_kind="agy"
+        )
 
         tool_call = ToolCall(
             tool_name="worker.run_task_attempt",
@@ -164,7 +181,10 @@ def test_agy_worker_run_gate_cannot_be_enabled_by_payload(app_harness: AppHarnes
             agent_run_id=agent_run.id,
             project_id=project_id,
             risk_level="R1",
-            arguments_json={"worker_run_id": worker_run.id, "allow_owner_agy_worker_run": True}, # payload override attempt
+            arguments_json={
+                "worker_run_id": worker_run.id,
+                "allow_owner_agy_worker_run": True,
+            },  # payload override attempt
             status=ToolCallStatus.CREATED,
         )
         db_session.add(tool_call)
@@ -176,6 +196,7 @@ def test_agy_worker_run_gate_cannot_be_enabled_by_payload(app_harness: AppHarnes
         assert result["error"] == "agy_worker_disabled"
         assert tool_call.status == ToolCallStatus.FAILED
 
+
 def test_agy_worker_run_gate_enabled_without_helper(app_harness: AppHarness, monkeypatch):
     from test_conversations_and_tools import authenticate, create_project
 
@@ -183,11 +204,14 @@ def test_agy_worker_run_gate_enabled_without_helper(app_harness: AppHarness, mon
     project_id = create_project(app_harness)
 
     from aidp_server.config import get_settings
+
     settings = get_settings()
     monkeypatch.setattr(settings, "allow_owner_agy_worker_run", True)
 
     with app_harness.session_factory() as db_session:
-        user, agent_run, task, attempt, worker_run = setup_test_data(db_session, project_id, adapter_kind="agy")
+        user, agent_run, task, attempt, worker_run = setup_test_data(
+            db_session, project_id, adapter_kind="agy"
+        )
 
         tool_call = ToolCall(
             tool_name="worker.run_task_attempt",
@@ -205,7 +229,15 @@ def test_agy_worker_run_gate_enabled_without_helper(app_harness: AppHarness, mon
         db_session.add(tool_call)
         db_session.flush()
 
-        result = execute_owner_tool(db_session, tool_call)
+        import aidp_server.owner_tools
+
+        def mock_handoff(*args, **kwargs):
+            raise NotImplementedError("Owner-triggered AGY worker handoff is not implemented yet.")
+
+        monkeypatch.setattr(aidp_server.owner_tools, "handoff_agy_worker_run", mock_handoff)
+
+        bg_tasks = MockBackgroundTasks()
+        result = execute_owner_tool(db_session, tool_call, background_tasks=bg_tasks)
         db_session.commit()
 
         assert "error" in result
@@ -244,14 +276,35 @@ def test_agy_worker_run_gate_enabled_with_helper(app_harness: AppHarness, monkey
     project_id = create_project(app_harness)
 
     from aidp_server.config import get_settings
+
     settings = get_settings()
     monkeypatch.setattr(settings, "allow_owner_agy_worker_run", True)
 
     import aidp_server.owner_tools
-    monkeypatch.setattr(aidp_server.owner_tools, "_handoff_agy_worker_run", lambda session, tool_call, attempt, worker_run: None)
+
+    def mock_handoff(
+        session, worker_run, task_attempt, task, tool_call, settings, background_tasks
+    ):
+        from aidp_server.db.models import RecordStatus, TaskAttemptStatus
+
+        worker_run.status = RecordStatus.RUNNING
+        task_attempt.status = TaskAttemptStatus.RUNNING_WORKER
+        session.flush()
+        return {
+            "task_attempt_id": task_attempt.id,
+            "worker_run_id": worker_run.id,
+            "status": "handoff_started",
+            "adapter": "agy",
+            "fresh_worker_context": True,
+            "previous_worker_context_reused": False,
+        }
+
+    monkeypatch.setattr(aidp_server.owner_tools, "handoff_agy_worker_run", mock_handoff)
 
     with app_harness.session_factory() as db_session:
-        user, agent_run, task, attempt, worker_run = setup_test_data(db_session, project_id, adapter_kind="agy")
+        user, agent_run, task, attempt, worker_run = setup_test_data(
+            db_session, project_id, adapter_kind="agy"
+        )
 
         tool_call = ToolCall(
             tool_name="worker.run_task_attempt",
@@ -269,7 +322,8 @@ def test_agy_worker_run_gate_enabled_with_helper(app_harness: AppHarness, monkey
         db_session.add(tool_call)
         db_session.flush()
 
-        result = execute_owner_tool(db_session, tool_call)
+        bg_tasks = MockBackgroundTasks()
+        result = execute_owner_tool(db_session, tool_call, background_tasks=bg_tasks)
         db_session.commit()
 
         assert "status" in result

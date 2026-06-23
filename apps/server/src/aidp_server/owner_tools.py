@@ -24,17 +24,8 @@ from aidp_server.db.models import (
 )
 from sqlalchemy import func
 from aidp_server.tool_registry import seed_tool_registry
-
-
-def _handoff_agy_worker_run(
-    session: Session, tool_call: ToolCall, attempt: TaskAttempt, worker_run: WorkerRun
-) -> None:
-    """
-    Handoff boundary for real AGY execution.
-    For this slice, this just logs or delegates to the real process boundary.
-    Do NOT execute subprocess directly here.
-    """
-    raise NotImplementedError("Owner-triggered AGY worker handoff is not implemented yet.")
+from aidp_server.worker_execution import handoff_agy_worker_run
+from fastapi import BackgroundTasks
 
 
 def apply_authority_envelope(session: Session, tool_call: ToolCall, mode: str = "personal") -> bool:
@@ -89,7 +80,9 @@ def apply_authority_envelope(session: Session, tool_call: ToolCall, mode: str = 
     return False
 
 
-def execute_owner_tool(session: Session, tool_call: ToolCall) -> dict[str, Any]:
+def execute_owner_tool(
+    session: Session, tool_call: ToolCall, background_tasks: BackgroundTasks | None = None
+) -> dict[str, Any]:
     if tool_call.tool_name == "project.list":
         projects = session.scalars(
             select(Project)
@@ -147,19 +140,26 @@ def execute_owner_tool(session: Session, tool_call: ToolCall) -> dict[str, Any]:
             tool_call.error_message = "Task not found or access denied"
             return {"error": "task_not_found"}
 
-        if worker_adapter == "agy":
+        # for agy adapter, we use a mock worker for now to satisfy DB constraints
+        db_worker_kind = "mock" if worker_adapter == "agy" else worker_adapter
+
+        try:
+            from aidp_server.db.models import WorkerKind
+
+            WorkerKind(db_worker_kind)
+        except ValueError:
             tool_call.status = ToolCallStatus.FAILED
             tool_call.error_code = "unsupported_worker_adapter"
-            tool_call.error_message = "AGY adapter is not supported in this slice"
+            tool_call.error_message = f"Unsupported adapter: {worker_adapter}"
             return {"error": "unsupported_worker_adapter"}
 
-        worker = session.scalars(select(Worker).where(Worker.worker_kind == worker_adapter)).first()
+        worker = session.scalars(select(Worker).where(Worker.worker_kind == db_worker_kind)).first()
         if not worker:
             worker = Worker(
                 local_user_id=tool_call.user_id,
                 device_id="system",
-                display_name=f"System {worker_adapter} Worker",
-                worker_kind=worker_adapter,
+                display_name=f"System {db_worker_kind} Worker",
+                worker_kind=db_worker_kind,
                 status=WorkerStatus.AVAILABLE,
                 capabilities_json={},
             )
@@ -315,8 +315,20 @@ def execute_owner_tool(session: Session, tool_call: ToolCall) -> dict[str, Any]:
                     "previous_worker_context_reused": False,
                 }
             else:
+                task = session.get(Task, attempt.task_id)
+                if not background_tasks:
+                    raise RuntimeError("background_tasks is required for AGY handoff")
+
                 try:
-                    _handoff_agy_worker_run(session, tool_call, attempt, worker_run)
+                    handoff_result = handoff_agy_worker_run(
+                        session=session,
+                        worker_run=worker_run,
+                        task_attempt=attempt,
+                        task=task,
+                        tool_call=tool_call,
+                        settings=settings,
+                        background_tasks=background_tasks,
+                    )
                 except NotImplementedError as e:
                     tool_call.status = ToolCallStatus.FAILED
                     tool_call.error_code = "agy_handoff_not_implemented"
@@ -379,14 +391,7 @@ def execute_owner_tool(session: Session, tool_call: ToolCall) -> dict[str, Any]:
                     },
                 )
 
-                return {
-                    "task_attempt_id": attempt.id,
-                    "worker_run_id": worker_run.id,
-                    "status": "handoff_started",
-                    "adapter": "agy",
-                    "fresh_worker_context": True,
-                    "previous_worker_context_reused": False,
-                }
+                return handoff_result
 
         from aidp_server.db.models import utc_now
 
@@ -445,6 +450,7 @@ def request_owner_tool_call(
     tool_name: str,
     arguments_json: dict[str, Any],
     provider_call_id: str | None = None,
+    background_tasks: BackgroundTasks | None = None,
 ) -> ToolCall:
     """
     Entrypoint for Owner Runtime Providers to request a tool call.
@@ -537,7 +543,7 @@ def request_owner_tool_call(
 
     # 4. completed / failed
     try:
-        result = execute_owner_tool(session, call)
+        result = execute_owner_tool(session, call, background_tasks=background_tasks)
         call.status = ToolCallStatus.SUCCEEDED
         call.completed_at = datetime.now(timezone.utc)
         call.result_json = result

@@ -149,7 +149,7 @@ def test_worker_start_unsupported_adapter(app_harness: AppHarness):
             agent_run_id=agent_run.id,
             project_id=project_id,
             risk_level="R1",
-            arguments_json={"task_id": task.id, "worker_adapter": "agy"},
+            arguments_json={"task_id": task.id, "worker_adapter": "invalid_adapter"},
             status=ToolCallStatus.CREATED,
         )
         db_session.add(tool_call)
@@ -157,11 +157,11 @@ def test_worker_start_unsupported_adapter(app_harness: AppHarness):
 
         result = execute_owner_tool(db_session, tool_call)
 
-        # 8. unsupported adapter "agy" is rejected.
+        # 8. unsupported adapter "invalid_adapter" is rejected.
         assert "error" in result
-        assert result["error"] == "unsupported_worker_adapter"
         assert tool_call.status == ToolCallStatus.FAILED
         assert tool_call.error_code == "unsupported_worker_adapter"
+        assert result["error"] == "unsupported_worker_adapter"
 
 
 def test_worker_start_missing_task_id(app_harness: AppHarness):

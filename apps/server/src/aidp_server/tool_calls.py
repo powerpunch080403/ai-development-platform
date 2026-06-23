@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -312,6 +312,7 @@ def request_owner_tool_call_endpoint(
     request: OwnerToolCallRequest,
     current: CurrentAuth,
     session: Annotated[Session, Depends(get_session)],
+    background_tasks: BackgroundTasks,
 ) -> ToolCallView:
     from aidp_server.owner_tools import request_owner_tool_call
     run = session.get(AgentRun, run_id)
@@ -326,6 +327,7 @@ def request_owner_tool_call_endpoint(
             tool_name=request.tool_name,
             arguments_json=request.arguments_json,
             provider_call_id=request.provider_call_id,
+            background_tasks=background_tasks,
         )
         session.commit()
         return call_view(call)

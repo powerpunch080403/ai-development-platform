@@ -405,11 +405,19 @@ export function PersonalModeDashboard() {
                               <p>
                                 <strong>Worker Run ID:</strong> <code>{latestRun.id.substring(0, 8)}</code>
                                 (Status: {latestRun.status}, Adapter: {latestRun.adapter_kind})
-                                {latestRun.adapter_kind === 'agy' && (
-                                  <span style={{ marginLeft: "0.5rem", backgroundColor: "#fff3e0", color: "#e65100", padding: "0.1rem 0.4rem", borderRadius: "8px", fontSize: "0.8em" }}>
-                                    AGY gated/controlled
-                                  </span>
-                                )}
+                                {latestRun.adapter_kind === 'agy' && (() => {
+                                  const handoffToolCall = toolCalls.find(tc =>
+                                    tc.tool_name === "worker.run_task_attempt" &&
+                                    tc.arguments_json?.worker_run_id === latestRun.id &&
+                                    tc.result_json?.status === "handoff_started"
+                                  );
+                                  return (
+                                    <span style={{ marginLeft: "0.5rem", backgroundColor: "#fff3e0", color: "#e65100", padding: "0.1rem 0.4rem", borderRadius: "8px", fontSize: "0.8em" }}>
+                                      AGY gated/controlled
+                                      {handoffToolCall && ` (Handoff Started: Process ${handoffToolCall.result_json?.process_run_id})`}
+                                    </span>
+                                  );
+                                })()}
                               </p>
                               {latestRun.summary && <p style={{ fontSize: "0.9em", color: "#555" }}><strong>Summary:</strong> {latestRun.summary}</p>}
                             </div>
