@@ -210,3 +210,11 @@ export type ExternalCliRunResultDto = {
   error_code?: string | null;
   error_message?: string | null;
 };
+
+export type SettingsSummaryDto = {
+  approval_mode: string;
+  available_approval_modes: string[];
+  allow_danger_local_config: boolean;
+  active_grant_placeholder: string;
+  adapter_summary: string;
+};

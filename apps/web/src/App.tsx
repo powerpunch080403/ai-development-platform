@@ -36,6 +36,7 @@ import {
   runMockWorker, startManualWorker, submitManualWorker, listWorkerRuns, externalCliDryRun,
   antigravityCliStatus, runAntigravityCliExperimental,
 } from "./api/client";
+import { PersonalModeDashboard } from "./components/dashboard/PersonalModeDashboard";
 
 const defaultDeviceName = `Web UI on ${navigator.userAgent.includes("Windows") ? "Windows" : "this device"}`;
 
@@ -318,6 +319,7 @@ function Workspace({ auth, onLogout }: { auth: AuthState; onLogout: () => Promis
 export function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [viewState, setViewState] = useState<"legacy" | "dashboard">("dashboard");
   const [code, setCode] = useState("");
   const [deviceName, setDeviceName] = useState(defaultDeviceName);
   const [error, setError] = useState("");
@@ -337,17 +339,29 @@ export function App() {
     }
   }
 
-  async function submitLogout() {
+  async function handleLogout() {
     await logout();
     setAuth(null);
   }
 
   return (
     <main className="app-shell">
-      <p className="eyebrow">Personal Mode MVP</p>
-      <h1>AI Development Platform</h1>
+      <header>
+        <p className="eyebrow">Personal Mode MVP</p>
+        <h1>AI Development Platform</h1>
+      </header>
       {loading ? <p className="status">Checking Local Runtime session…</p> : auth ? (
-        <Workspace auth={auth} onLogout={submitLogout} />
+        <>
+          <div className="view-toggle">
+            <button onClick={() => setViewState("dashboard")} className={viewState === "dashboard" ? "" : "secondary"}>Dashboard View</button>
+            <button onClick={() => setViewState("legacy")} className={viewState === "legacy" ? "" : "secondary"}>Legacy View</button>
+          </div>
+          {viewState === "dashboard" ? (
+            <PersonalModeDashboard />
+          ) : (
+            <Workspace auth={auth} onLogout={handleLogout} />
+          )}
+        </>
       ) : (
         <form className="panel" onSubmit={submitPairing}>
           <p className="status">Pair this browser with the Local Runtime.</p>

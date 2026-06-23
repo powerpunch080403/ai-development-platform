@@ -20,6 +20,7 @@ import type {
   StartManualWorkerRequest, StartManualWorkerResponse,
   SubmitManualWorkerRequest, SubmitManualWorkerResponse,
   FailWorkerRunRequest, CancelWorkerRunRequest, ExternalCliRunResultDto,
+  SettingsSummaryDto,
 } from "@aidp/shared-contracts";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -124,6 +125,9 @@ export function getWorktreeDiff(id:string):Promise<WorktreeDiffDto>{return reque
 export function commitWorktree(id:string,message:string):Promise<GitWorktreeDto>{return request<GitWorktreeDto>(`/worktrees/${id}/commit-result`,{method:"POST",body:JSON.stringify({commit_message:message})})}
 export function listArtifacts(attemptId:string):Promise<ArtifactRefDto[]>{return request<ArtifactRefDto[]>(`/task-attempts/${attemptId}/artifacts`)}
 export function readArtifact(id:string):Promise<{id:string;text:string}>{return request<{id:string;text:string}>(`/artifacts/${id}/text`)}
+export function getSettingsSummary(): Promise<SettingsSummaryDto> {
+  return request<SettingsSummaryDto>("/settings/summary");
+}
 export function listMergeReady():Promise<AttemptReviewDto[]>{return request<AttemptReviewDto[]>("/reviews/merge-ready")}
 export function getReview(id:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/review`)}
 export function approveReview(id:string,summary:string):Promise<AttemptReviewDto>{return request<AttemptReviewDto>(`/task-attempts/${id}/review/approve`,{method:"POST",body:JSON.stringify({review_summary:summary})})}
