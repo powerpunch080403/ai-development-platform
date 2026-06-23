@@ -408,3 +408,29 @@ def create_agent_run_step(
         started_at=step.started_at,
         completed_at=step.completed_at,
     )
+
+
+@router.get("/agent-runs/{run_id}/steps", response_model=list[AgentRunStepView])
+def list_agent_run_steps(
+    run_id: str, current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
+) -> list[AgentRunStepView]:
+    owned(session, AgentRun, run_id, current.user.id)
+    values = session.scalars(
+        select(AgentRunStep)
+        .where(AgentRunStep.agent_run_id == run_id)
+        .order_by(AgentRunStep.step_index.asc())
+    )
+    return [
+        AgentRunStepView(
+            id=step.id,
+            agent_run_id=step.agent_run_id,
+            step_index=step.step_index,
+            step_type=step.step_type.value,
+            status=step.status.value,
+            summary=step.summary,
+            created_at=step.created_at,
+            started_at=step.started_at,
+            completed_at=step.completed_at,
+        )
+        for step in values
+    ]

@@ -281,6 +281,21 @@ def update_tool_call_status(
     return call_view(call)
 
 
+@router.get("/agent-runs/{run_id}/tool-calls", response_model=list[ToolCallView])
+def list_tool_calls(
+    run_id: str, current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
+) -> list[ToolCallView]:
+    values = session.scalars(
+        select(ToolCall)
+        .where(
+            ToolCall.user_id == current.user.id,
+            ToolCall.agent_run_id == run_id,
+        )
+        .order_by(ToolCall.created_at.asc())
+    )
+    return [call_view(v) for v in values]
+
+
 @router.get("/audit-events", response_model=list[AuditEventView])
 def list_audit_events(
     current: CurrentAuth,

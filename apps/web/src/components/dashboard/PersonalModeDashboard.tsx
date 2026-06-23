@@ -11,6 +11,10 @@ import {
   WorktreeDiffDto,
   ApprovalRequestDto,
   ArtifactRefDto,
+  MessageDto,
+  AgentRunDto,
+  AgentRunStepDto,
+  ToolCallDto,
 } from "@aidp/shared-contracts";
 import {
   listProjects,
@@ -24,6 +28,10 @@ import {
   getWorktreeDiff,
   listArtifacts,
   listApprovalRequests,
+  listMessages,
+  listAgentRuns,
+  listAgentRunSteps,
+  listToolCalls,
 } from "../../api/client";
 
 export function PersonalModeDashboard() {
@@ -48,6 +56,15 @@ export function PersonalModeDashboard() {
 
   const [activeTab, setActiveTab] = useState<"diff" | "artifacts" | "logs">("diff");
 
+  // Owner Conversation states
+  const [agentRuns, setAgentRuns] = useState<AgentRunDto[]>([]);
+  const [selectedAgentRunId, setSelectedAgentRunId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<MessageDto[]>([]);
+  const [agentRunSteps, setAgentRunSteps] = useState<AgentRunStepDto[]>([]);
+  const [toolCalls, setToolCalls] = useState<ToolCallDto[]>([]);
+
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+
   // Initial fetch
   useEffect(() => {
     getSettingsSummary().then(setSettings).catch(console.error);
@@ -55,7 +72,10 @@ export function PersonalModeDashboard() {
       setProjects(ps);
       if (ps.length > 0) setSelectedProjectId(ps[0].id);
     }).catch(console.error);
-    listConversations().then(setConversations).catch(console.error);
+    listConversations()
+      .then(setConversations)
+      .catch(console.error)
+      .finally(() => setIsLoadingConversations(false));
     listApprovalRequests().then(setApprovals).catch(console.error);
   }, []);
 
@@ -119,9 +139,45 @@ export function PersonalModeDashboard() {
     }
   }, [selectedAttemptId]);
 
+  // Owner Conversation effects
+  const selectedConversation = selectedProjectId
+    ? conversations.find(c => c.project_id === selectedProjectId) || conversations[0]
+    : conversations[0];
+
+  useEffect(() => {
+    if (selectedConversation) {
+      listAgentRuns(selectedConversation.id).then(runs => {
+        setAgentRuns(runs);
+        if (runs.length > 0) setSelectedAgentRunId(runs[0].id);
+        else setSelectedAgentRunId(null);
+      }).catch(console.error);
+      listMessages(selectedConversation.id).then(setMessages).catch(console.error);
+    } else {
+      setAgentRuns([]);
+      setMessages([]);
+      setSelectedAgentRunId(null);
+    }
+  }, [selectedConversation?.id]);
+
+  useEffect(() => {
+    if (selectedAgentRunId) {
+      listAgentRunSteps(selectedAgentRunId).then(setAgentRunSteps).catch(console.error);
+      listToolCalls(selectedAgentRunId).then(setToolCalls).catch(console.error);
+    } else {
+      setAgentRunSteps([]);
+      setToolCalls([]);
+    }
+  }, [selectedAgentRunId]);
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId);
   const selectedAttempt = attempts.find(a => a.id === selectedAttemptId);
+
+  // Combine feed
+  const feedItems = [
+    ...messages.map(m => ({ type: 'message' as const, time: new Date(m.created_at).getTime(), data: m })),
+    ...agentRunSteps.map(s => ({ type: 'step' as const, time: new Date(s.created_at).getTime(), data: s })),
+    ...toolCalls.map(t => ({ type: 'tool' as const, time: new Date(t.created_at).getTime(), data: t })),
+  ].sort((a, b) => a.time - b.time);
 
   return (
     <div className="dashboard-layout">
@@ -191,14 +247,65 @@ export function PersonalModeDashboard() {
       <main className="dashboard-main">
         <div className="main-section">
           <h3>Owner Conversation</h3>
-          <div className="conversation-shell placeholder">
-            <p>[Placeholder: Owner Conversation Input & Messages]</p>
-            {conversations.length > 0 ? (
-              conversations.slice(0, 1).map((c) => (
-                <div key={c.id}>Active Conversation: {c.title}</div>
-              ))
+          <div className="conversation-shell">
+            {isLoadingConversations ? (
+              <p>Loading conversations...</p>
+            ) : selectedConversation ? (
+              <div className="conversation-container">
+                <div className="conversation-header" style={{ marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "1px solid #ccc" }}>
+                  <strong>Conversation:</strong> {selectedConversation.title} [{selectedConversation.status}]<br/>
+                  <small>ID: {selectedConversation.id} | Updated: {new Date(selectedConversation.updated_at).toLocaleString()}</small>
+                </div>
+
+                {agentRuns.length > 0 ? (
+                  <div className="agent-runs-selector" style={{ marginBottom: "1rem" }}>
+                    <strong>Agent Runs:</strong>
+                    <select value={selectedAgentRunId || ""} onChange={e => setSelectedAgentRunId(e.target.value)} style={{ marginLeft: "0.5rem" }}>
+                      {agentRuns.map(run => (
+                        <option key={run.id} value={run.id}>Run {run.id.substring(0,8)} - {run.purpose} [{run.status}]</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <p className="empty-state">No agent runs yet.</p>
+                )}
+
+                <div className="activity-feed" style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #eee", padding: "0.5rem" }}>
+                  {feedItems.length > 0 ? (
+                    feedItems.map((item, idx) => {
+                      if (item.type === 'message') {
+                        const m = item.data as MessageDto;
+                        return (
+                          <div key={`msg-${m.id}`} style={{ marginBottom: "0.5rem", padding: "0.5rem", backgroundColor: m.role === 'user' ? "#e3f2fd" : "#f5f5f5" }}>
+                            <strong>{m.role.toUpperCase()}</strong>: <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.content}</pre>
+                          </div>
+                        );
+                      } else if (item.type === 'step') {
+                        const s = item.data as AgentRunStepDto;
+                        return (
+                          <div key={`step-${s.id}`} style={{ marginBottom: "0.5rem", padding: "0.5rem", borderLeft: "3px solid #ff9800" }}>
+                            <em>Step: {s.step_type} [{s.status}]</em> - {s.summary}
+                          </div>
+                        );
+                      } else if (item.type === 'tool') {
+                        const t = item.data as ToolCallDto;
+                        return (
+                          <div key={`tool-${t.id}`} style={{ marginBottom: "0.5rem", padding: "0.5rem", borderLeft: "3px solid #4caf50" }}>
+                            <strong>Tool Call:</strong> {t.tool_name} [{t.status}]
+                            <pre style={{ margin: 0, fontSize: "0.85em" }}>{JSON.stringify(t.arguments_json, null, 2)}</pre>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })
+                  ) : (
+                    <p className="empty-state">No activity feed items.</p>
+                  )}
+                </div>
+
+              </div>
             ) : (
-              <p>No conversations found.</p>
+              <p className="empty-state">No conversations yet.</p>
             )}
           </div>
         </div>

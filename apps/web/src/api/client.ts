@@ -10,6 +10,8 @@ import type {
   MessageDto,
   AgentRunDto,
   ToolRegistryEntryDto,
+  ToolCallDto,
+  AgentRunStepDto,
   CreateConversationRequest,
   AppendMessageRequest,
   CreateAgentRunRequest,
@@ -105,6 +107,8 @@ export function listMessages(id: string): Promise<MessageDto[]> { return request
 export function appendMessage(id: string, input: AppendMessageRequest): Promise<MessageDto> { return request<MessageDto>(`/conversations/${id}/messages`, { method: "POST", body: JSON.stringify(input) }); }
 export function listAgentRuns(id: string): Promise<AgentRunDto[]> { return request<AgentRunDto[]>(`/conversations/${id}/agent-runs`); }
 export function createAgentRun(input: CreateAgentRunRequest): Promise<AgentRunDto> { return request<AgentRunDto>("/agent-runs", { method: "POST", body: JSON.stringify(input) }); }
+export function listAgentRunSteps(id: string): Promise<AgentRunStepDto[]> { return request<AgentRunStepDto[]>(`/agent-runs/${id}/steps`); }
+export function listToolCalls(id: string): Promise<ToolCallDto[]> { return request<ToolCallDto[]>(`/agent-runs/${id}/tool-calls`); }
 export function listToolRegistry(): Promise<ToolRegistryEntryDto[]> { return request<ToolRegistryEntryDto[]>("/tool-registry"); }
 export function listWorkItems(projectId:string):Promise<WorkItemDto[]>{return request<WorkItemDto[]>(`/projects/${projectId}/work-items`)}
 export function createWorkItem(projectId:string,input:CreateWorkItemRequest):Promise<WorkItemDto>{return request<WorkItemDto>(`/projects/${projectId}/work-items`,{method:"POST",body:JSON.stringify(input)})}
