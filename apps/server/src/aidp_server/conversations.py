@@ -23,6 +23,7 @@ from aidp_server.db.models import (
     utc_now,
 )
 from aidp_server.db.session import get_session
+from aidp_server.config import Settings, get_settings
 
 
 class CreateConversationRequest(BaseModel):
@@ -44,7 +45,7 @@ class CreateAgentRunRequest(BaseModel):
 
 
 class StartAgentRunRequest(BaseModel):
-    provider_kind: str = "codex_cli"
+    provider_kind: str | None = Field(default="codex_cli")
 
 
 class UpdateAgentRunStatusRequest(BaseModel):
@@ -373,14 +374,23 @@ def start_agent_run(
     request: StartAgentRunRequest,
     current: CurrentAuth,
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> AgentRunView:
     run = owned(session, AgentRun, run_id, current.user.id)
     if run.status not in {AgentRunStatus.QUEUED, AgentRunStatus.CANCELLED}:
         raise HTTPException(status_code=400, detail="AgentRun is not in a startable state")
 
+    provider_kind = request.provider_kind or "codex_cli"
+
+    if provider_kind == "fake":
+        if not settings.allow_fake_owner_provider:
+            raise HTTPException(status_code=403, detail="Fake owner provider is not allowed")
+    elif provider_kind != "codex_cli":
+        raise HTTPException(status_code=400, detail=f"Unknown owner provider kind: {provider_kind}")
+
     from aidp_server.owner_providers import get_owner_provider
     try:
-        provider = get_owner_provider(request.provider_kind)
+        provider = get_owner_provider(provider_kind)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

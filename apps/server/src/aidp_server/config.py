@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     antigravity_cli_timeout_seconds: int = 300
     antigravity_cli_allow_dangerous_skip_permissions: bool = False
 
+    allow_fake_owner_provider: bool = False
+
     @property
     def session_cookie_secure(self) -> bool:
         return self.env.lower() == "production"

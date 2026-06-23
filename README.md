@@ -59,10 +59,12 @@
 
 ### Not implemented yet
 
+Current implementation status:
+- Codex CLI Owner Runtime Provider: skeleton implemented; real bridge/tool-loop pending.
+- Antigravity CLI Worker Adapter: experimental controlled path implemented for bounded TaskAttempt execution.
+- External CLI execution: Worker-side AGY path exists; Owner-side Codex bridge is pending.
+
 아직 불가능한 것:
-- Real Codex CLI Owner Adapter
-- Real Antigravity CLI Worker Adapter
-- External AI process execution
 - Remote Test Runner
 - Desktop App Shell
 - Team Mode / Central Authority

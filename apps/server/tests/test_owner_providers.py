@@ -7,6 +7,7 @@ from test_conversations_and_tools import authenticate, create_conversation, crea
 
 def test_start_queued_agent_run_invokes_fake_provider(app_harness: AppHarness) -> None:
     authenticate(app_harness)
+    app_harness.settings.allow_fake_owner_provider = True
     project_id = create_project(app_harness)
     conversation = create_conversation(app_harness, project_id)
     conversation_id = str(conversation["id"])
@@ -42,6 +43,55 @@ def test_start_queued_agent_run_invokes_fake_provider(app_harness: AppHarness) -
         assert run.completed_at is not None
 
 
+def test_fake_provider_rejected_by_default(app_harness: AppHarness) -> None:
+    authenticate(app_harness)
+    # allow_fake_owner_provider is False by default
+    project_id = create_project(app_harness)
+    conversation = create_conversation(app_harness, project_id)
+    conversation_id = str(conversation["id"])
+
+    run_resp = app_harness.client.post(
+        "/agent-runs",
+        json={
+            "conversation_id": conversation_id,
+            "project_id": project_id,
+            "purpose": "Test fake provider rejection",
+        },
+    )
+    run_id = run_resp.json()["id"]
+
+    start_resp = app_harness.client.post(
+        f"/agent-runs/{run_id}/start",
+        json={"provider_kind": "fake"}
+    )
+    assert start_resp.status_code == 403
+    assert start_resp.json()["detail"] == "Fake owner provider is not allowed"
+
+
+def test_unknown_provider_rejected(app_harness: AppHarness) -> None:
+    authenticate(app_harness)
+    project_id = create_project(app_harness)
+    conversation = create_conversation(app_harness, project_id)
+    conversation_id = str(conversation["id"])
+
+    run_resp = app_harness.client.post(
+        "/agent-runs",
+        json={
+            "conversation_id": conversation_id,
+            "project_id": project_id,
+            "purpose": "Test unknown provider rejection",
+        },
+    )
+    run_id = run_resp.json()["id"]
+
+    start_resp = app_harness.client.post(
+        f"/agent-runs/{run_id}/start",
+        json={"provider_kind": "unknown_provider"}
+    )
+    assert start_resp.status_code == 400
+    assert "Unknown owner provider kind" in start_resp.json()["detail"]
+
+
 def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     project_id = create_project(app_harness)
@@ -58,18 +108,33 @@ def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
     )
     run_id = run_resp.json()["id"]
 
+    # Start with default provider
     start_resp = app_harness.client.post(
         f"/agent-runs/{run_id}/start",
-        json={"provider_kind": "codex_cli"}
+        json={}  # should default to codex_cli
     )
     assert start_resp.status_code == 200
     assert start_resp.json()["status"] == "completed"
+
+    with app_harness.session_factory() as session:
+        from aidp_server.db.models import AuditEvent
+        audit = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.event_type == "owner_runtime.skeleton_invoked",
+                AuditEvent.agent_run_id == run_id
+            )
+        )
+        assert audit is not None
+        assert audit.metadata_json["skeleton"] is True
+        assert audit.metadata_json["real_provider_execution"] is False
+        assert audit.metadata_json["tool_loop_executed"] is False
 
 
 def test_keyword_routing_is_prohibited_during_start(
     app_harness: AppHarness,
 ) -> None:
     authenticate(app_harness)
+    app_harness.settings.allow_fake_owner_provider = True
     project_id = create_project(app_harness)
     conversation = create_conversation(app_harness, project_id)
     conversation_id = str(conversation["id"])

@@ -22,12 +22,18 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
         
         record_audit_event(
             session,
-            event_type="owner_runtime.started",
-            message="Owner Runtime started (skeleton)",
+            event_type="owner_runtime.skeleton_invoked",
+            message="Codex CLI owner provider skeleton invoked; real bridge not implemented yet.",
             local_user_id=run.local_user_id,
             agent_run_id=run.id,
             project_id=run.project_id,
-            metadata={"provider_kind": self.provider_kind, "mode": "skeleton"}
+            metadata={
+                "provider_kind": self.provider_kind,
+                "skeleton": True,
+                "real_provider_execution": False,
+                "tool_loop_executed": False,
+                "reason": "Codex CLI owner provider skeleton invoked; real bridge not implemented yet."
+            }
         )
 
 class FakeOwnerProvider(OwnerRuntimeProvider):
