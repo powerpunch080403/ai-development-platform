@@ -43,6 +43,10 @@ class CreateAgentRunRequest(BaseModel):
     input_message_id: str | None = None
 
 
+class StartAgentRunRequest(BaseModel):
+    provider_kind: str = "codex_cli"
+
+
 class UpdateAgentRunStatusRequest(BaseModel):
     status: AgentRunStatus
     error_code: str | None = Field(default=None, max_length=100)
@@ -360,6 +364,29 @@ def update_agent_run_status(
         project_id=run.project_id,
     )
     session.commit()
+    return run_view(run)
+
+
+@router.post("/agent-runs/{run_id}/start", response_model=AgentRunView)
+def start_agent_run(
+    run_id: str,
+    request: StartAgentRunRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> AgentRunView:
+    run = owned(session, AgentRun, run_id, current.user.id)
+    if run.status not in {AgentRunStatus.QUEUED, AgentRunStatus.CANCELLED}:
+        raise HTTPException(status_code=400, detail="AgentRun is not in a startable state")
+
+    from aidp_server.owner_providers import get_owner_provider
+    try:
+        provider = get_owner_provider(request.provider_kind)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    provider.start_agent_run(session, run)
+    session.commit()
+
     return run_view(run)
 
 
