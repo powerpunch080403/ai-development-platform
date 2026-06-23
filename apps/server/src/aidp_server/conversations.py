@@ -390,7 +390,7 @@ def start_agent_run(
 
     from aidp_server.owner_providers import get_owner_provider
     try:
-        provider = get_owner_provider(provider_kind)
+        provider = get_owner_provider(provider_kind, settings)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

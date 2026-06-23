@@ -60,7 +60,7 @@
 ### Not implemented yet
 
 Current implementation status:
-- Codex CLI Owner Runtime Provider: skeleton implemented; real bridge/tool-loop pending.
+- Codex CLI Owner Runtime Provider: skeleton implemented; bridge protocol spike documented; real owner reasoning/tool-loop pending and disabled by default.
 - Antigravity CLI Worker Adapter: experimental controlled path implemented for bounded TaskAttempt execution.
 - External CLI execution: Worker-side AGY path exists; Owner-side Codex bridge is pending.
 

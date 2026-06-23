@@ -126,8 +126,57 @@ def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
         )
         assert audit is not None
         assert audit.metadata_json["skeleton"] is True
+        assert audit.metadata_json.get("bridge_spike", False) is False
         assert audit.metadata_json["real_provider_execution"] is False
         assert audit.metadata_json["tool_loop_executed"] is False
+        assert audit.metadata_json["task_side_effects_performed"] is False
+        assert audit.metadata_json["worker_side_effects_performed"] is False
+        assert audit.metadata_json["approval_side_effects_performed"] is False
+
+
+def test_codex_cli_provider_bridge_spike_safe_invocation(app_harness: AppHarness) -> None:
+    authenticate(app_harness)
+    app_harness.settings.allow_real_codex_owner_provider = True
+
+    project_id = create_project(app_harness)
+    conversation = create_conversation(app_harness, project_id)
+    conversation_id = str(conversation["id"])
+
+    run_resp = app_harness.client.post(
+        "/agent-runs",
+        json={
+            "conversation_id": conversation_id,
+            "project_id": project_id,
+            "purpose": "Test codex cli bridge spike",
+        },
+    )
+    run_id = run_resp.json()["id"]
+
+    start_resp = app_harness.client.post(
+        f"/agent-runs/{run_id}/start",
+        json={"provider_kind": "codex_cli"}
+    )
+    assert start_resp.status_code == 200
+    assert start_resp.json()["status"] == "completed"
+
+    with app_harness.session_factory() as session:
+        from aidp_server.db.models import AuditEvent
+        audit = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.event_type == "owner_runtime.bridge_spike_invoked",
+                AuditEvent.agent_run_id == run_id
+            )
+        )
+        assert audit is not None
+        assert audit.metadata_json["bridge_spike"] is True
+        assert audit.metadata_json["real_provider_execution"] is False
+        assert audit.metadata_json["tool_loop_executed"] is False
+        assert audit.metadata_json["task_side_effects_performed"] is False
+        assert audit.metadata_json["worker_side_effects_performed"] is False
+        assert audit.metadata_json["approval_side_effects_performed"] is False
+
+        # Verify it attempted to run `codex --version`
+        assert audit.metadata_json["codex_cli_command"] == "codex"
 
 
 def test_keyword_routing_is_prohibited_during_start(
