@@ -138,6 +138,7 @@ class ToolCallStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    REJECTED = "rejected"
     SKIPPED_DUPLICATE = "skipped_duplicate"
 
 
@@ -632,6 +633,7 @@ class ToolCall(TimestampMixin, Base):
         enum_column(ToolCallStatus), nullable=False, default=ToolCallStatus.CREATED
     )
     result_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    result_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

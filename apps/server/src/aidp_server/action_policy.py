@@ -10,6 +10,7 @@ class ActionPolicyDefinition:
     enabled_in_tool_registry: bool = True
 
 ACTION_CATALOG: list[ActionPolicyDefinition] = [
+    ActionPolicyDefinition("project.list", "R0", "allow", "List projects"),
     ActionPolicyDefinition("project.create", "R1", "allow", "Create a project"),
     ActionPolicyDefinition("repository.register", "R1", "allow", "Register a repository"),
     ActionPolicyDefinition("repository.get_status", "R0", "allow", "Get repository status"),
@@ -21,6 +22,7 @@ ACTION_CATALOG: list[ActionPolicyDefinition] = [
     ActionPolicyDefinition("tool_call.record", "R1", "allow", "Record tool call"),
     ActionPolicyDefinition("work_item.create", "R1", "allow", "Create work item"),
     ActionPolicyDefinition("work_item.update_status", "R1", "allow", "Update work item status"),
+    ActionPolicyDefinition("task.list", "R0", "allow", "List tasks"),
     ActionPolicyDefinition("task.create", "R1", "allow", "Create task"),
     ActionPolicyDefinition("task.update_status", "R1", "allow", "Update task status"),
     ActionPolicyDefinition("task_attempt.create", "R1", "allow", "Create task attempt"),

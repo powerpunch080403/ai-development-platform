@@ -77,6 +77,7 @@ class ToolCallView(BaseModel):
     arguments_json: dict[str, Any]
     status: str
     result_ref: str | None
+    result_json: dict[str, Any] | None
     error_code: str | None
     error_message: str | None
     created_at: datetime
@@ -118,6 +119,7 @@ def call_view(value: ToolCall) -> ToolCallView:
         arguments_json=value.arguments_json,
         status=value.status.value,
         result_ref=value.result_ref,
+        result_json=value.result_json,
         error_code=value.error_code,
         error_message=value.error_message,
         created_at=value.created_at,
@@ -264,6 +266,7 @@ def update_tool_call_status(
         ToolCallStatus.SUCCEEDED,
         ToolCallStatus.FAILED,
         ToolCallStatus.CANCELLED,
+        ToolCallStatus.REJECTED,
         ToolCallStatus.SKIPPED_DUPLICATE,
     }:
         call.completed_at = now
@@ -294,6 +297,40 @@ def list_tool_calls(
         .order_by(ToolCall.created_at.asc())
     )
     return [call_view(v) for v in values]
+
+
+class OwnerToolCallRequest(BaseModel):
+    provider_kind: str
+    tool_name: str
+    arguments_json: dict[str, Any] = Field(default_factory=dict)
+    provider_call_id: str | None = None
+
+
+@router.post("/agent-runs/{run_id}/tool-calls", response_model=ToolCallView, status_code=201)
+def request_owner_tool_call_endpoint(
+    run_id: str,
+    request: OwnerToolCallRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> ToolCallView:
+    from aidp_server.owner_tools import request_owner_tool_call
+    run = session.get(AgentRun, run_id)
+    if not run or run.local_user_id != current.user.id:
+        raise HTTPException(status_code=404, detail="AgentRun not found")
+
+    try:
+        call = request_owner_tool_call(
+            session=session,
+            agent_run_id=run_id,
+            provider_kind=request.provider_kind,
+            tool_name=request.tool_name,
+            arguments_json=request.arguments_json,
+            provider_call_id=request.provider_call_id,
+        )
+        session.commit()
+        return call_view(call)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/audit-events", response_model=list[AuditEventView])
