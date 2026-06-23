@@ -34,6 +34,8 @@ import {
   listToolCalls,
   appendMessage,
   createAgentRun,
+  getTaskTrace,
+  TaskTraceDto,
 } from "../../api/client";
 
 export function PersonalModeDashboard() {
@@ -45,6 +47,7 @@ export function PersonalModeDashboard() {
 
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskTrace, setTaskTrace] = useState<TaskTraceDto | null>(null);
 
   const [attempts, setAttempts] = useState<TaskAttemptDto[]>([]);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
@@ -116,9 +119,12 @@ export function PersonalModeDashboard() {
           setSelectedAttemptId(null);
         }
       }).catch(console.error);
+
+      getTaskTrace(selectedTaskId).then(setTaskTrace).catch(console.error);
     } else {
       setAttempts([]);
       setSelectedAttemptId(null);
+      setTaskTrace(null);
     }
   }, [selectedTaskId]);
 
@@ -375,6 +381,11 @@ export function PersonalModeDashboard() {
               <div>
                 <h4>{selectedTask.title}</h4>
                 <p><strong>Status:</strong> {selectedTask.status} | <strong>Risk Level:</strong> {selectedTask.risk_level}</p>
+                {taskTrace?.source && (
+                  <div style={{ backgroundColor: "#f0f8ff", padding: "0.5rem", marginBottom: "1rem", borderLeft: "4px solid #1976d2" }}>
+                    <strong>Trace:</strong> Created by Owner tool call <code>{taskTrace.source.tool_name}</code> in AgentRun <code>{taskTrace.source.agent_run_id?.substring(0, 8) || 'none'}</code> (Provider: {taskTrace.source.provider_kind})
+                  </div>
+                )}
                 <p><strong>Instructions:</strong></p>
                 <pre>{selectedTask.instructions}</pre>
                 <p><strong>Write Scope:</strong> {JSON.stringify(selectedTask.write_scope)}</p>

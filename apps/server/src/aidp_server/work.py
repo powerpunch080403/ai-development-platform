@@ -19,6 +19,7 @@ from aidp_server.db.models import (
     TaskAttempt,
     TaskAttemptStatus,
     TaskStatus,
+    ToolCall,
     WorkItem,
     WorkItemStatus,
     WorkItemType,
@@ -486,6 +487,53 @@ def list_tasks(
     ]
 
 
+class TraceSourceView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    type: str
+    agent_run_id: str | None
+    tool_call_id: str
+    tool_name: str
+    provider_kind: str
+    created_at: datetime
+
+
+class TaskTraceView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    task_id: str
+    project_id: str
+    source: TraceSourceView | None
+
+
+@router.get("/tasks/{task_id}/trace", response_model=TaskTraceView)
+def get_task_trace(
+    task_id: str, current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
+) -> TaskTraceView:
+    task = owned(session, Task, task_id, current.user.id)
+
+    tool_calls = session.scalars(
+        select(ToolCall)
+        .where(ToolCall.tool_name == "task.create")
+        .where(ToolCall.user_id == current.user.id)
+        .order_by(ToolCall.created_at.desc())
+    ).all()
+
+    source = None
+    for tc in tool_calls:
+        if tc.result_json and isinstance(tc.result_json, dict):
+            if tc.result_json.get("task_id") == task_id:
+                source = TraceSourceView(
+                    type="owner_tool_call",
+                    agent_run_id=tc.agent_run_id,
+                    tool_call_id=tc.id,
+                    tool_name=tc.tool_name,
+                    provider_kind=tc.caller_id or "unknown",
+                    created_at=tc.created_at,
+                )
+                break
+
+    return TaskTraceView(task_id=task.id, project_id=task.project_id, source=source)
+
+
 @router.get("/tasks/{task_id}", response_model=TaskView)
 def get_task(
     task_id: str, current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
@@ -642,8 +690,9 @@ def execute_mock_worker(
     session: Annotated[Session, Depends(get_session)],
 ) -> RunMockWorkerResponse:
     from aidp_server.adapters.mock_worker import run_mock_worker
+
     attempt = owned(session, TaskAttempt, attempt_id, current.user.id)
-    
+
     audit(
         session,
         current,
@@ -653,19 +702,21 @@ def execute_mock_worker(
         repository_id=attempt.repository_id,
         metadata={"task_attempt_id": attempt.id},
     )
-    
+
     worker_run, artifact = run_mock_worker(session, attempt, request.commit_message)
     session.commit()
     session.refresh(worker_run)
-    
+
     return RunMockWorkerResponse(
         worker_run=worker_run,
         artifact_id=artifact.id if artifact else None,
-        status="success" if worker_run.status == "succeeded" else "failed"
+        status="success" if worker_run.status == "succeeded" else "failed",
     )
 
 
-@router.post("/task-attempts/{attempt_id}/manual-worker/start", response_model=StartManualWorkerResponse)
+@router.post(
+    "/task-attempts/{attempt_id}/manual-worker/start", response_model=StartManualWorkerResponse
+)
 def api_start_manual_worker(
     attempt_id: str,
     request: StartManualWorkerRequest,
@@ -675,9 +726,9 @@ def api_start_manual_worker(
 ) -> StartManualWorkerResponse:
     from aidp_server.adapters.manual_worker import start_manual_worker
     from aidp_server.worktrees import view as worktree_view
-    
+
     attempt = owned(session, TaskAttempt, attempt_id, current.user.id)
-    
+
     audit(
         session,
         current,
@@ -687,24 +738,28 @@ def api_start_manual_worker(
         repository_id=attempt.repository_id,
         metadata={"task_attempt_id": attempt.id},
     )
-    
+
     try:
-        worker_run, worktree = start_manual_worker(session, settings, current, attempt, request.notes)
+        worker_run, worktree = start_manual_worker(
+            session, settings, current, attempt, request.notes
+        )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-        
+
     session.commit()
     session.refresh(worker_run)
     task = session.get(Task, attempt.task_id)
-    
+
     return StartManualWorkerResponse(
         worker_run=WorkerRunView.model_validate(worker_run),
         worktree=worktree_view(worktree),
-        task=task_view(task)
+        task=task_view(task),
     )
 
 
-@router.post("/task-attempts/{attempt_id}/manual-worker/submit", response_model=SubmitManualWorkerResponse)
+@router.post(
+    "/task-attempts/{attempt_id}/manual-worker/submit", response_model=SubmitManualWorkerResponse
+)
 def api_submit_manual_worker(
     attempt_id: str,
     request: SubmitManualWorkerRequest,
@@ -713,24 +768,24 @@ def api_submit_manual_worker(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SubmitManualWorkerResponse:
     from aidp_server.adapters.manual_worker import submit_manual_worker
-    
+
     attempt = owned(session, TaskAttempt, attempt_id, current.user.id)
-    
+
     try:
         worker_run, artifact, result_sha = submit_manual_worker(
             session, settings, attempt, request.commit_message, request.result_summary
         )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-        
+
     session.commit()
     session.refresh(worker_run)
-    
+
     return SubmitManualWorkerResponse(
         worker_run=WorkerRunView.model_validate(worker_run),
         artifact_id=artifact.id if artifact else None,
         result_commit_sha=result_sha,
-        status="success" if worker_run.status == "succeeded" else "failed"
+        status="success" if worker_run.status == "succeeded" else "failed",
     )
 
 
@@ -743,7 +798,7 @@ def api_fail_worker_run(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict:
     from aidp_server.adapters.manual_worker import fail_worker_run
-    
+
     worker_run = owned(session, WorkerRun, run_id, current.user.id)
     audit(
         session,
@@ -754,12 +809,12 @@ def api_fail_worker_run(
         repository_id=worker_run.repository_id,
         metadata={"worker_run_id": worker_run.id},
     )
-    
+
     try:
         fail_worker_run(session, settings, worker_run, request.error_message, request.error_code)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-        
+
     session.commit()
     return {"status": "ok"}
 
@@ -773,7 +828,7 @@ def api_cancel_worker_run(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict:
     from aidp_server.adapters.manual_worker import cancel_worker_run
-    
+
     worker_run = owned(session, WorkerRun, run_id, current.user.id)
     audit(
         session,
@@ -784,12 +839,12 @@ def api_cancel_worker_run(
         repository_id=worker_run.repository_id,
         metadata={"worker_run_id": worker_run.id},
     )
-    
+
     try:
         cancel_worker_run(session, settings, worker_run, request.reason)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-        
+
     session.commit()
     return {"status": "ok"}
 

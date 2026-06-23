@@ -101,6 +101,19 @@ export function refreshRepositoryStatus(repositoryId: string): Promise<GitReposi
   });
 }
 
+export interface TaskTraceDto {
+  task_id: string;
+  project_id: string;
+  source: {
+    type: string;
+    agent_run_id: string | null;
+    tool_call_id: string;
+    tool_name: string;
+    provider_kind: string;
+    created_at: string;
+  } | null;
+}
+
 export function listConversations(): Promise<ConversationDto[]> { return request<ConversationDto[]>("/conversations"); }
 export function createConversation(input: CreateConversationRequest): Promise<ConversationDto> { return request<ConversationDto>("/conversations", { method: "POST", body: JSON.stringify(input) }); }
 export function listMessages(id: string): Promise<MessageDto[]> { return request<MessageDto[]>(`/conversations/${id}/messages`); }
@@ -114,6 +127,7 @@ export function listWorkItems(projectId:string):Promise<WorkItemDto[]>{return re
 export function createWorkItem(projectId:string,input:CreateWorkItemRequest):Promise<WorkItemDto>{return request<WorkItemDto>(`/projects/${projectId}/work-items`,{method:"POST",body:JSON.stringify(input)})}
 export function listTasks(projectId:string):Promise<TaskDto[]>{return request<TaskDto[]>(`/projects/${projectId}/tasks`)}
 export function createTask(projectId:string,input:CreateTaskRequest):Promise<TaskDto>{return request<TaskDto>(`/projects/${projectId}/tasks`,{method:"POST",body:JSON.stringify(input)})}
+export function getTaskTrace(taskId: string): Promise<TaskTraceDto> { return request<TaskTraceDto>(`/tasks/${taskId}/trace`); }
 export function listAttempts(taskId:string):Promise<TaskAttemptDto[]>{return request<TaskAttemptDto[]>(`/tasks/${taskId}/attempts`)}
 export function createAttempt(taskId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/tasks/${taskId}/attempts`,{method:"POST",body:"{}"})}
 export function listWorkers():Promise<WorkerDto[]>{return request<WorkerDto[]>("/workers")}
