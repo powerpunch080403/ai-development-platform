@@ -32,6 +32,8 @@ import {
   listAgentRuns,
   listAgentRunSteps,
   listToolCalls,
+  appendMessage,
+  createAgentRun,
 } from "../../api/client";
 
 export function PersonalModeDashboard() {
@@ -64,6 +66,11 @@ export function PersonalModeDashboard() {
   const [toolCalls, setToolCalls] = useState<ToolCallDto[]>([]);
 
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+
+  // Send message states
+  const [draftMessage, setDraftMessage] = useState("");
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   // Initial fetch
   useEffect(() => {
@@ -168,6 +175,37 @@ export function PersonalModeDashboard() {
       setToolCalls([]);
     }
   }, [selectedAgentRunId]);
+
+  const handleSendMessage = async () => {
+    if (!draftMessage.trim() || !selectedConversation) return;
+    setIsSendingMessage(true);
+    setSendError(null);
+    try {
+      const msg = await appendMessage(selectedConversation.id, {
+        role: "user",
+        content: draftMessage.trim(),
+        content_type: "text",
+      });
+      const purpose = draftMessage.trim().substring(0, 50) + (draftMessage.trim().length > 50 ? "..." : "");
+      const run = await createAgentRun({
+        conversation_id: selectedConversation.id,
+        project_id: selectedProjectId || undefined,
+        purpose: purpose,
+        input_message_id: msg.id,
+      });
+
+      setDraftMessage("");
+      const msgs = await listMessages(selectedConversation.id);
+      setMessages(msgs);
+      const runs = await listAgentRuns(selectedConversation.id);
+      setAgentRuns(runs);
+      setSelectedAgentRunId(run.id);
+    } catch (err: any) {
+      setSendError(err.message || String(err));
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId);
   const selectedAttempt = attempts.find(a => a.id === selectedAttemptId);
@@ -302,6 +340,26 @@ export function PersonalModeDashboard() {
                     <p className="empty-state">No activity feed items.</p>
                   )}
                 </div>
+
+                <div className="owner-input-area" style={{ display: "flex", gap: "0.5rem" }}>
+                  <input
+                    type="text"
+                    value={draftMessage}
+                    onChange={e => setDraftMessage(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+                    placeholder="Ask Owner to do something..."
+                    disabled={isSendingMessage}
+                    style={{ flex: 1, padding: "0.5rem" }}
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!draftMessage.trim() || isSendingMessage}
+                    style={{ padding: "0.5rem 1rem" }}
+                  >
+                    {isSendingMessage ? "Sending..." : "Send to Owner"}
+                  </button>
+                </div>
+                {sendError && <div style={{ color: "red", marginTop: "0.5rem" }}>Failed to send message: {sendError}</div>}
 
               </div>
             ) : (
