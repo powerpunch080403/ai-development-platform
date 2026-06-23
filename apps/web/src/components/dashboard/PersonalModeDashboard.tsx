@@ -402,12 +402,20 @@ export function PersonalModeDashboard() {
                           {latestAttempt.result_summary && <p style={{ fontSize: "0.9em", color: "#555" }}><strong>Summary:</strong> {latestAttempt.result_summary}</p>}
                           {latestRun && (
                             <div>
-                              <p><strong>Worker Run ID:</strong> <code>{latestRun.id.substring(0, 8)}</code> (Status: {latestRun.status}, Adapter: {latestRun.adapter_kind})</p>
+                              <p>
+                                <strong>Worker Run ID:</strong> <code>{latestRun.id.substring(0, 8)}</code>
+                                (Status: {latestRun.status}, Adapter: {latestRun.adapter_kind})
+                                {latestRun.adapter_kind === 'agy' && (
+                                  <span style={{ marginLeft: "0.5rem", backgroundColor: "#fff3e0", color: "#e65100", padding: "0.1rem 0.4rem", borderRadius: "8px", fontSize: "0.8em" }}>
+                                    AGY gated/controlled
+                                  </span>
+                                )}
+                              </p>
                               {latestRun.summary && <p style={{ fontSize: "0.9em", color: "#555" }}><strong>Summary:</strong> {latestRun.summary}</p>}
                             </div>
                           )}
                           <div style={{ marginTop: "0.5rem", display: "inline-block", backgroundColor: "#e8f5e9", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85em", color: "#2e7d32" }}>
-                            ✓ fresh_worker_context = true
+                            ??fresh_worker_context = true
                           </div>
                         </div>
                       );

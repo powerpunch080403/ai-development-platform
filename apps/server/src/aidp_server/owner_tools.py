@@ -26,6 +26,17 @@ from sqlalchemy import func
 from aidp_server.tool_registry import seed_tool_registry
 
 
+def _handoff_agy_worker_run(
+    session: Session, tool_call: ToolCall, attempt: TaskAttempt, worker_run: WorkerRun
+) -> None:
+    """
+    Handoff boundary for real AGY execution.
+    For this slice, this just logs or delegates to the real process boundary.
+    Do NOT execute subprocess directly here.
+    """
+    raise NotImplementedError("Owner-triggered AGY worker handoff is not implemented yet.")
+
+
 def apply_authority_envelope(session: Session, tool_call: ToolCall, mode: str = "personal") -> bool:
     """
     Applies the authority envelope to the tool call.
@@ -253,11 +264,129 @@ def execute_owner_tool(session: Session, tool_call: ToolCall) -> dict[str, Any]:
             tool_call.error_message = "TaskAttempt not found"
             return {"error": "task_attempt_not_found"}
 
-        if worker_run.adapter_kind != "mock":
+        if worker_run.adapter_kind not in ["mock", "agy"]:
             tool_call.status = ToolCallStatus.FAILED
             tool_call.error_code = "unsupported_worker_adapter"
             tool_call.error_message = f"Unsupported worker adapter: {worker_run.adapter_kind}"
             return {"error": "unsupported_worker_adapter"}
+
+        from aidp_server.config import get_settings
+        from aidp_server.db.models import utc_now
+
+        settings = get_settings()
+        now = utc_now()
+
+        if worker_run.adapter_kind == "agy":
+            if not settings.allow_owner_agy_worker_run:
+                tool_call.status = ToolCallStatus.FAILED
+                tool_call.error_code = "agy_worker_disabled"
+                tool_call.error_message = (
+                    "Owner-triggered AGY worker execution is disabled by local configuration."
+                )
+
+                record_audit_event(
+                    session,
+                    event_type="owner_tool_call.rejected",
+                    message="worker.run_task_attempt rejected (AGY disabled)",
+                    local_user_id=tool_call.user_id,
+                    project_id=attempt.project_id,
+                    agent_run_id=tool_call.agent_run_id,
+                    tool_call_id=tool_call.id,
+                    metadata={
+                        "tool_name": "worker.run_task_attempt",
+                        "mode": "personal",
+                        "authority_applied": True,
+                        "owner_judgment_replaced": False,
+                        "side_effect": True,
+                        "fresh_worker_context": True,
+                        "implicit_worker_memory": False,
+                        "previous_worker_context_reused": False,
+                        "continuity_source": "owner_authored_task_packet",
+                        "adapter": "agy",
+                        "gate": "disabled",
+                    },
+                )
+
+                return {
+                    "error": "agy_worker_disabled",
+                    "adapter": "agy",
+                    "gate": "disabled",
+                    "fresh_worker_context": True,
+                    "previous_worker_context_reused": False,
+                }
+            else:
+                try:
+                    _handoff_agy_worker_run(session, tool_call, attempt, worker_run)
+                except NotImplementedError as e:
+                    tool_call.status = ToolCallStatus.FAILED
+                    tool_call.error_code = "agy_handoff_not_implemented"
+                    tool_call.error_message = str(e)
+
+                    record_audit_event(
+                        session,
+                        event_type="owner_tool_call.rejected",
+                        message="worker.run_task_attempt rejected (AGY handoff not implemented)",
+                        local_user_id=tool_call.user_id,
+                        project_id=attempt.project_id,
+                        agent_run_id=tool_call.agent_run_id,
+                        tool_call_id=tool_call.id,
+                        metadata={
+                            "tool_name": "worker.run_task_attempt",
+                            "mode": "personal",
+                            "authority_applied": True,
+                            "owner_judgment_replaced": False,
+                            "side_effect": True,
+                            "fresh_worker_context": True,
+                            "implicit_worker_memory": False,
+                            "previous_worker_context_reused": False,
+                            "continuity_source": "owner_authored_task_packet",
+                            "adapter": "agy",
+                            "error": "agy_handoff_not_implemented",
+                        },
+                    )
+                    return {
+                        "error": "agy_handoff_not_implemented",
+                        "adapter": "agy",
+                        "fresh_worker_context": True,
+                        "previous_worker_context_reused": False,
+                    }
+
+                worker_run.status = RecordStatus.RUNNING
+                attempt.status = TaskAttemptStatus.RUNNING_WORKER
+                session.flush()
+
+                record_audit_event(
+                    session,
+                    event_type="owner_tool_call.completed",
+                    message="worker.run_task_attempt completed (AGY handoff)",
+                    local_user_id=tool_call.user_id,
+                    project_id=attempt.project_id,
+                    agent_run_id=tool_call.agent_run_id,
+                    tool_call_id=tool_call.id,
+                    metadata={
+                        "tool_name": "worker.run_task_attempt",
+                        "mode": "personal",
+                        "authority_applied": True,
+                        "owner_judgment_replaced": False,
+                        "side_effect": True,
+                        "fresh_worker_context": True,
+                        "implicit_worker_memory": False,
+                        "previous_worker_context_reused": False,
+                        "continuity_source": "owner_authored_task_packet",
+                        "task_attempt_id": attempt.id,
+                        "worker_run_id": worker_run.id,
+                        "adapter": "agy",
+                    },
+                )
+
+                return {
+                    "task_attempt_id": attempt.id,
+                    "worker_run_id": worker_run.id,
+                    "status": "handoff_started",
+                    "adapter": "agy",
+                    "fresh_worker_context": True,
+                    "previous_worker_context_reused": False,
+                }
 
         from aidp_server.db.models import utc_now
 

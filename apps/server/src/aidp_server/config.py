@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     antigravity_cli_timeout_seconds: int = 300
     antigravity_cli_allow_dangerous_skip_permissions: bool = False
 
+    allow_owner_agy_worker_run: bool = False
+
     allow_real_codex_owner_provider: bool = False
     codex_cli_command: str = "codex"
     codex_cli_timeout_seconds: int = 120
