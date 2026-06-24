@@ -12,6 +12,7 @@ from aidp_server.process_runs import router as process_runs_router
 from aidp_server.work import router as work_router
 from aidp_server.task_workspace import router as task_workspace_router
 from aidp_server.work_room import router as work_room_router
+from aidp_server.attempt_actions import router as attempt_actions_router
 from aidp_server.worktrees import router as worktrees_router
 from aidp_server.reviews import router as reviews_router
 from aidp_server.system import router as system_router
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(work_router)
     app.include_router(task_workspace_router)
     app.include_router(work_room_router)
+    app.include_router(attempt_actions_router)
     app.include_router(worktrees_router)
     app.include_router(reviews_router)
     app.include_router(approvals_router)
