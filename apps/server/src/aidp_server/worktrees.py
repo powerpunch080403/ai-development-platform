@@ -120,18 +120,17 @@ def command(path: Path, *args: str) -> str:
     return r.stdout
 
 
-@router.post("/task-attempts/{attempt_id}/worktree", response_model=WorktreeView, status_code=201)
-def create_worktree(
-    attempt_id: str,
-    current: CurrentAuth,
-    session: Annotated[Session, Depends(get_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> WorktreeView:
-    a = owned(session, TaskAttempt, attempt_id, current.user.id)
+def ensure_worktree(
+    session: Session, settings: Settings, attempt_id: str, local_user_id: str
+) -> GitWorktree:
+    a = owned(session, TaskAttempt, attempt_id, local_user_id)
     if not a.claimed_by_worker_id:
         raise HTTPException(status_code=409, detail="Attempt must be claimed")
-    if session.scalar(select(GitWorktree).where(GitWorktree.task_attempt_id == a.id)):
-        raise HTTPException(status_code=409, detail="Attempt already has a worktree")
+    
+    existing_worktree = session.scalar(select(GitWorktree).where(GitWorktree.task_attempt_id == a.id))
+    if existing_worktree:
+        return existing_worktree
+
     task = session.get(Task, a.task_id)
     repo = session.get(ProjectRepository, a.repository_id) if a.repository_id else None
     if not task or not repo:
@@ -146,7 +145,7 @@ def create_worktree(
     if pd == PolicyDecisionResult.DENY:
         raise HTTPException(status_code=403, detail="Policy denied worktree.create")
     create_policy_decision(
-        session, current.user.id, "worktree.create",
+        session, local_user_id, "worktree.create",
         project_id=a.project_id, repository_id=repo.id, task_id=a.task_id, task_attempt_id=a.id
     )
 
@@ -169,7 +168,7 @@ def create_worktree(
         suffix += 1
         branch = f"{stem}-{suffix}"
     wt = GitWorktree(
-        local_user_id=current.user.id,
+        local_user_id=local_user_id,
         project_id=a.project_id,
         repository_id=repo.id,
         task_id=task.id,
@@ -199,11 +198,28 @@ def create_worktree(
         session,
         event_type="worktree.created",
         message="Git worktree created",
-        local_user_id=current.user.id,
+        local_user_id=local_user_id,
         project_id=a.project_id,
         repository_id=repo.id,
         metadata={"worktree_id": wt.id, "branch": branch},
     )
+    session.flush()
+    return wt
+
+@router.post("/task-attempts/{attempt_id}/worktree", response_model=WorktreeView, status_code=201)
+def create_worktree(
+    attempt_id: str,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> WorktreeView:
+    # HTTP endpoint enforces strict 409 if worktree already exists.
+    # (ensure_worktree is idempotent for internal callers only.)
+    a = owned(session, TaskAttempt, attempt_id, current.user.id)
+    existing = session.scalar(select(GitWorktree).where(GitWorktree.task_attempt_id == a.id))
+    if existing:
+        raise HTTPException(status_code=409, detail="Worktree already exists for this attempt")
+    wt = ensure_worktree(session, settings, attempt_id, current.user.id)
     session.commit()
     return view(wt)
 

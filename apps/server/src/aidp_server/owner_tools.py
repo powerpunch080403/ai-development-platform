@@ -342,6 +342,10 @@ def execute_owner_tool(
 
                 try:
                     from aidp_server.worker_execution import get_worker_execution_service
+                    from aidp_server.worktrees import ensure_worktree
+
+                    # Ensure worktree exists before AGY handoff
+                    ensure_worktree(session, settings, attempt.id, tool_call.user_id)
 
                     exec_service = get_worker_execution_service(background_tasks)
                     handoff_result = exec_service.run_task_attempt(
