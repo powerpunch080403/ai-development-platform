@@ -93,6 +93,17 @@ def _owned_task(session: Session, task_id: str | None, user_id: str | None) -> T
     return task
 
 
+def _owned_attempt(
+    session: Session, attempt_id: str | None, user_id: str | None
+) -> TaskAttempt | None:
+    if not attempt_id:
+        return None
+    attempt = session.get(TaskAttempt, attempt_id)
+    if attempt is None or attempt.local_user_id != user_id:
+        return None
+    return attempt
+
+
 def _system_worker(session: Session, user_id: str, worker_adapter: str) -> Worker | None:
     db_worker_kind = "mock" if worker_adapter == "agy" else worker_adapter
     from aidp_server.db.models import WorkerKind
@@ -133,6 +144,42 @@ def _system_worker(session: Session, user_id: str, worker_adapter: str) -> Worke
     session.add(worker)
     session.flush()
     return worker
+
+
+def _create_worker_run_for_attempt(
+    session: Session,
+    *,
+    tool_call: ToolCall,
+    task: Task,
+    attempt: TaskAttempt,
+    worker: Worker,
+    worker_adapter: str,
+) -> WorkerRun | None:
+    existing_active_run = session.scalars(
+        select(WorkerRun)
+        .where(WorkerRun.task_attempt_id == attempt.id)
+        .where(WorkerRun.status.in_([RecordStatus.CREATED, RecordStatus.RUNNING]))
+        .order_by(WorkerRun.created_at.desc())
+    ).first()
+    if existing_active_run is not None:
+        _fail(tool_call, "worker_run_exists", "TaskAttempt already has an active WorkerRun")
+        return None
+
+    attempt.worker_id = worker.id
+    attempt.claimed_by_worker_id = worker.id
+    worker_run = WorkerRun(
+        local_user_id=tool_call.user_id,
+        project_id=task.project_id,
+        repository_id=task.repository_id,
+        task_id=task.id,
+        task_attempt_id=attempt.id,
+        worker_id=worker.id,
+        adapter_kind=worker_adapter,
+        status=RecordStatus.CREATED,
+    )
+    session.add(worker_run)
+    session.flush()
+    return worker_run
 
 
 def execute_owner_tool(
@@ -185,48 +232,60 @@ def execute_owner_tool(
 
     if tool_call.tool_name == "worker.start_task_attempt":
         args = tool_call.arguments_json or {}
-        task = _owned_task(session, args.get("task_id"), tool_call.user_id)
         worker_adapter = args.get("worker_adapter", "mock")
-        if task is None:
-            return _fail(tool_call, "task_not_found", "Task not found or access denied")
-
         worker = _system_worker(session, tool_call.user_id, worker_adapter)
         if worker is None:
             return _fail(tool_call, "unsupported_worker_adapter", f"Unsupported adapter: {worker_adapter}")
 
-        attempt_number = (
-            session.scalar(
-                select(func.coalesce(func.max(TaskAttempt.attempt_number), 0)).where(
-                    TaskAttempt.task_id == task.id
+        attempt_id = args.get("task_attempt_id")
+        if attempt_id:
+            attempt = _owned_attempt(session, attempt_id, tool_call.user_id)
+            if attempt is None:
+                return _fail(tool_call, "task_attempt_not_found", "TaskAttempt not found or access denied")
+            task = _owned_task(session, attempt.task_id, tool_call.user_id)
+            if task is None:
+                return _fail(tool_call, "task_not_found", "Task not found or access denied")
+            if attempt.status is not TaskAttemptStatus.CREATED:
+                return _fail(
+                    tool_call,
+                    "task_attempt_not_startable",
+                    "Only created TaskAttempts can be started by this tool",
                 )
+        else:
+            task = _owned_task(session, args.get("task_id"), tool_call.user_id)
+            if task is None:
+                return _fail(tool_call, "task_not_found", "Task not found or access denied")
+            attempt_number = (
+                session.scalar(
+                    select(func.coalesce(func.max(TaskAttempt.attempt_number), 0)).where(
+                        TaskAttempt.task_id == task.id
+                    )
+                )
+                + 1
             )
-            + 1
-        )
-        attempt = TaskAttempt(
-            task_id=task.id,
-            local_user_id=tool_call.user_id,
-            project_id=task.project_id,
-            repository_id=task.repository_id,
-            worker_id=worker.id,
-            claimed_by_worker_id=worker.id,
-            status=TaskAttemptStatus.CREATED,
-            attempt_number=attempt_number,
-        )
-        session.add(attempt)
-        session.flush()
+            attempt = TaskAttempt(
+                task_id=task.id,
+                local_user_id=tool_call.user_id,
+                project_id=task.project_id,
+                repository_id=task.repository_id,
+                worker_id=worker.id,
+                claimed_by_worker_id=worker.id,
+                status=TaskAttemptStatus.CREATED,
+                attempt_number=attempt_number,
+            )
+            session.add(attempt)
+            session.flush()
 
-        worker_run = WorkerRun(
-            local_user_id=tool_call.user_id,
-            project_id=task.project_id,
-            repository_id=task.repository_id,
-            task_id=task.id,
-            task_attempt_id=attempt.id,
-            worker_id=worker.id,
-            adapter_kind=worker_adapter,
-            status=RecordStatus.CREATED,
+        worker_run = _create_worker_run_for_attempt(
+            session,
+            tool_call=tool_call,
+            task=task,
+            attempt=attempt,
+            worker=worker,
+            worker_adapter=worker_adapter,
         )
-        session.add(worker_run)
-        session.flush()
+        if worker_run is None:
+            return {"error": tool_call.error_code}
 
         record_audit_event(
             session,
@@ -242,6 +301,7 @@ def execute_owner_tool(
                 "continuity_source": "owner_authored_task_packet",
                 "task_attempt_id": attempt.id,
                 "worker_run_id": worker_run.id,
+                "existing_attempt": bool(attempt_id),
             },
         )
         return {
@@ -249,6 +309,7 @@ def execute_owner_tool(
             "worker_run_id": worker_run.id,
             "status": "queued",
             "fresh_worker_context": True,
+            "existing_attempt": bool(attempt_id),
         }
 
     if tool_call.tool_name == "worker.run_task_attempt":
