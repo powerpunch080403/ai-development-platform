@@ -8,6 +8,7 @@ from aidp_server.db.models import (
     ProcessRun,
     ProcessRunStatus,
     RecordStatus,
+    TaskAttempt,
     Worker,
     WorkerKind,
     WorkerRun,
@@ -56,7 +57,7 @@ def test_task_workspace_aggregates_attempt_execution_records(app_harness: AppHar
 
     now = utc_now()
     with app_harness.session_factory() as session:
-        created_attempt = session.get(__import__("aidp_server.db.models").db.models.TaskAttempt, attempt_id)
+        created_attempt = session.get(TaskAttempt, attempt_id)
         assert created_attempt is not None
         user_id = created_attempt.local_user_id
 
