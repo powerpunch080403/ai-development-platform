@@ -116,6 +116,7 @@ async def background_agy_runner(worker_run_id: str) -> None:
         except Exception as e:
             print(f"Exception in background_agy_runner: {e}")
             session.rollback()
+            error_message = str(e) or repr(e) or type(e).__name__
             
             # Mark as failed if an unhandled exception occurred
             from aidp_server.db.models import RecordStatus, TaskAttemptStatus
@@ -123,7 +124,7 @@ async def background_agy_runner(worker_run_id: str) -> None:
             worker_run = session.get(WorkerRun, worker_run_id)
             if worker_run:
                 worker_run.status = RecordStatus.FAILED
-                worker_run.error_message = str(e)
+                worker_run.error_message = error_message
                 
                 attempt = session.get(TaskAttempt, worker_run.task_attempt_id)
                 if attempt:

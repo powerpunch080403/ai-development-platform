@@ -58,7 +58,7 @@ class NonInteractiveSubprocessRuntimeProvider:
             scope_error = None
         except Exception as e:
             # Capture scope validation errors before starting the process.
-            scope_error = str(e)
+            scope_error = str(e) or repr(e) or type(e).__name__
 
         # Prepare command display
         redacted_args = redact_args(arguments)
@@ -181,7 +181,7 @@ class NonInteractiveSubprocessRuntimeProvider:
             run_record.status = ProcessRunStatus.FAILED
             run_record.failed_at = utc_now()
             run_record.duration_ms = int((end_time - start_time) * 1000)
-            run_record.error_message = str(e)
+            run_record.error_message = str(e) or repr(e) or type(e).__name__
             run_record.error_code = "EXECUTION_ERROR"
 
         return run_record
