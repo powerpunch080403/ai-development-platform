@@ -19,6 +19,8 @@ async def test_background_agy_runner_uses_default_task_prompt(monkeypatch, app_h
         "run_existing_agy_worker_run",
         fake_run_existing_agy_worker_run,
     )
+    monkeypatch.setattr(worker_execution, "get_session_factory", lambda: app_harness.session_factory)
+    monkeypatch.setattr(worker_execution, "get_settings", lambda: app_harness.settings)
 
     with app_harness.session_factory() as session:
         worker_run = WorkerRun(
