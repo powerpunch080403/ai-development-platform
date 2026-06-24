@@ -1,5 +1,6 @@
+from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -10,15 +11,10 @@ from aidp_server.audit import record_audit_event
 from aidp_server.auth import CurrentAuth
 from aidp_server.db.base import Base
 from aidp_server.db.models import (
-    ArtifactRef,
-    ProcessRun,
     Project,
-    ProjectRepository,
     Task,
     TaskAttempt,
     TimestampMixin,
-    Worker,
-    WorkerRun,
     enum_column,
     new_uuid,
     utc_now,
@@ -67,7 +63,7 @@ class TaskWorkRoomMessage(TimestampMixin, Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False, default="text/markdown")
     metadata_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
-    updated_at: Mapped[Any] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
 
@@ -103,14 +99,14 @@ class WorkRoomMessageView(BaseModel):
     content: str
     content_type: str
     metadata: dict[str, object] | None
-    created_at: Any
-    updated_at: Any
+    created_at: datetime
+    updated_at: datetime
 
 
 router = APIRouter(tags=["task work room"])
 
 
-def _owned(session: Session, model: type, object_id: str, user_id: str) -> Any:
+def _owned(session: Session, model: type, object_id: str, user_id: str):
     value = session.get(model, object_id)
     if value is None or getattr(value, "local_user_id", None) != user_id:
         raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
@@ -139,22 +135,16 @@ def work_room_message_view(message: TaskWorkRoomMessage) -> WorkRoomMessageView:
     )
 
 
-def _validate_optional_link(
-    session: Session,
-    *,
-    task: Task,
-    current: CurrentAuth,
-    model: type,
-    object_id: str | None,
-    link_name: str,
+def _ensure_optional_attempt_belongs_to_task(
+    session: Session, *, task: Task, attempt_id: str | None, user_id: str
 ) -> None:
-    if object_id is None:
+    if attempt_id is None:
         return
-    linked = _owned(session, model, object_id, current.user.id)
-    if getattr(linked, "task_id", task.id) != task.id:
+    attempt = _owned(session, TaskAttempt, attempt_id, user_id)
+    if attempt.task_id != task.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"{link_name} belongs to another task",
+            detail="task_attempt_id belongs to another task",
         )
 
 
@@ -185,44 +175,10 @@ def create_work_room_message(
     session: Annotated[Session, Depends(get_session)],
 ) -> WorkRoomMessageView:
     task = _owned(session, Task, task_id, current.user.id)
-    if task.repository_id is not None:
-        _owned(session, ProjectRepository, task.repository_id, current.user.id)
     _owned(session, Project, task.project_id, current.user.id)
-
-    _validate_optional_link(
-        session,
-        task=task,
-        current=current,
-        model=TaskAttempt,
-        object_id=request.task_attempt_id,
-        link_name="task_attempt_id",
+    _ensure_optional_attempt_belongs_to_task(
+        session, task=task, attempt_id=request.task_attempt_id, user_id=current.user.id
     )
-    _validate_optional_link(
-        session,
-        task=task,
-        current=current,
-        model=WorkerRun,
-        object_id=request.worker_run_id,
-        link_name="worker_run_id",
-    )
-    _validate_optional_link(
-        session,
-        task=task,
-        current=current,
-        model=ProcessRun,
-        object_id=request.process_run_id,
-        link_name="process_run_id",
-    )
-    _validate_optional_link(
-        session,
-        task=task,
-        current=current,
-        model=ArtifactRef,
-        object_id=request.artifact_id,
-        link_name="artifact_id",
-    )
-    if request.worker_id is not None:
-        _owned(session, Worker, request.worker_id, current.user.id)
 
     message = TaskWorkRoomMessage(
         local_user_id=current.user.id,
@@ -251,7 +207,7 @@ def create_work_room_message(
         session_id=current.runtime_session.id,
         project_id=task.project_id,
         repository_id=task.repository_id,
-        metadata_json={
+        metadata={
             "task_id": task.id,
             "task_attempt_id": request.task_attempt_id,
             "message_id": message.id,
