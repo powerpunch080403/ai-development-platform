@@ -146,8 +146,13 @@ def create_worktree(
     if pd == PolicyDecisionResult.DENY:
         raise HTTPException(status_code=403, detail="Policy denied worktree.create")
     create_policy_decision(
-        session, current.user.id, "worktree.create",
-        project_id=a.project_id, repository_id=repo.id, task_id=a.task_id, task_attempt_id=a.id
+        session,
+        current.user.id,
+        "worktree.create",
+        project_id=a.project_id,
+        repository_id=repo.id,
+        task_id=a.task_id,
+        task_attempt_id=a.id,
     )
 
     worktrees, _ = ensure_runtime_dirs(settings)
@@ -282,9 +287,13 @@ def cleanup_worktree(
     if pd == PolicyDecisionResult.DENY:
         raise HTTPException(status_code=403, detail="Policy denied worktree.cleanup")
     create_policy_decision(
-        session, current.user.id, "worktree.cleanup",
-        project_id=worktree.project_id, repository_id=worktree.repository_id,
-        task_id=worktree.task_id, task_attempt_id=worktree.task_attempt_id
+        session,
+        current.user.id,
+        "worktree.cleanup",
+        project_id=worktree.project_id,
+        repository_id=worktree.repository_id,
+        task_id=worktree.task_id,
+        task_attempt_id=worktree.task_attempt_id,
     )
 
     listing = run_git_write(source, "worktree", "list", "--porcelain")
@@ -398,22 +407,43 @@ def apply_worktree_result(
     command(path, "add", "-A")
     diff = command(path, "diff", "--cached", "--binary")
     create_text_artifact(
-        session, settings, content=diff, kind=ArtifactKind.DIFF_PATCH,
-        user_id=user_id, project_id=w.project_id, repository_id=w.repository_id,
-        task_id=w.task_id, attempt_id=w.task_attempt_id, worker_id=w.worker_id,
+        session,
+        settings,
+        content=diff,
+        kind=ArtifactKind.DIFF_PATCH,
+        user_id=user_id,
+        project_id=w.project_id,
+        repository_id=w.repository_id,
+        task_id=w.task_id,
+        attempt_id=w.task_attempt_id,
+        worker_id=w.worker_id,
     )
     create_text_artifact(
-        session, settings, content=status_text, kind=ArtifactKind.GIT_STATUS,
-        user_id=user_id, project_id=w.project_id, repository_id=w.repository_id,
-        task_id=w.task_id, attempt_id=w.task_attempt_id, worker_id=w.worker_id,
+        session,
+        settings,
+        content=status_text,
+        kind=ArtifactKind.GIT_STATUS,
+        user_id=user_id,
+        project_id=w.project_id,
+        repository_id=w.repository_id,
+        task_id=w.task_id,
+        attempt_id=w.task_attempt_id,
+        worker_id=w.worker_id,
     )
     command(path, "commit", "-m", commit_message)
     sha = command(path, "rev-parse", "HEAD").strip()
     log = command(path, "show", "--stat", "--oneline", "--no-renames", sha)
     create_text_artifact(
-        session, settings, content=log, kind=ArtifactKind.COMMIT_LOG,
-        user_id=user_id, project_id=w.project_id, repository_id=w.repository_id,
-        task_id=w.task_id, attempt_id=w.task_attempt_id, worker_id=w.worker_id,
+        session,
+        settings,
+        content=log,
+        kind=ArtifactKind.COMMIT_LOG,
+        user_id=user_id,
+        project_id=w.project_id,
+        repository_id=w.repository_id,
+        task_id=w.task_id,
+        attempt_id=w.task_attempt_id,
+        worker_id=w.worker_id,
     )
     now = datetime.now(timezone.utc)
     w.result_commit_sha = sha
@@ -442,14 +472,18 @@ def commit_result(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WorktreeView:
     w = owned(session, GitWorktree, wid, current.user.id)
-    
+
     pd, risk = evaluate_action("worktree.commit_result")
     if pd == PolicyDecisionResult.DENY:
         raise HTTPException(status_code=403, detail="Policy denied worktree.commit_result")
     create_policy_decision(
-        session, current.user.id, "worktree.commit_result",
-        project_id=w.project_id, repository_id=w.repository_id,
-        task_id=w.task_id, task_attempt_id=w.task_attempt_id
+        session,
+        current.user.id,
+        "worktree.commit_result",
+        project_id=w.project_id,
+        repository_id=w.repository_id,
+        task_id=w.task_id,
+        task_attempt_id=w.task_attempt_id,
     )
 
     try:

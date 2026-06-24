@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from aidp_server.action_policy import get_action_policy
 
+
 def evaluate_action(action_type: str) -> tuple[PolicyDecisionResult, RiskLevel]:
     """
     MVP Baseline Policy Evaluator
@@ -12,7 +13,7 @@ def evaluate_action(action_type: str) -> tuple[PolicyDecisionResult, RiskLevel]:
     policy_def = get_action_policy(action_type)
     if policy_def:
         return PolicyDecisionResult(policy_def.decision), RiskLevel(policy_def.risk_level)
-    
+
     # Anything else defaults to deny (R4) for safety in this MVP slice
     return PolicyDecisionResult.DENY, RiskLevel.R4
 
@@ -31,11 +32,11 @@ def create_policy_decision(
     approval_request_id: str | None = None,
 ) -> PolicyDecision:
     decision, risk_level = evaluate_action(action_type)
-    
+
     reason = f"MVP Baseline rule for {action_type}"
     if decision == PolicyDecisionResult.DENY:
         reason = f"Action {action_type} is not explicitly allowed in MVP Baseline."
-    
+
     pd = PolicyDecision(
         local_user_id=local_user_id,
         session_id=session_id,

@@ -8,19 +8,20 @@ from aidp_server.artifacts import read_text_artifact
 from test_worktrees import auth
 from conftest import AppHarness
 
+
 def setup_repo_and_task(app_harness: AppHarness, project_name: str, repo_name: str):
     auth(app_harness)
     repo_dir = app_harness.settings.app_data_dir / repo_name
     repo_dir.mkdir(parents=True, exist_ok=True)
     import subprocess
+
     subprocess.run(["git", "init"], cwd=repo_dir, check=True)
 
     resp = app_harness.client.post("/projects", json={"name": project_name})
     project_id = resp.json()["id"]
 
     resp = app_harness.client.post(
-        f"/projects/{project_id}/repositories",
-        json={"repository_path": str(repo_dir)}
+        f"/projects/{project_id}/repositories", json={"repository_path": str(repo_dir)}
     )
     repo_id = resp.json()["id"]
     return repo_dir, project_id, repo_id
@@ -33,16 +34,18 @@ def test_provider_preserves_cwd_and_stdout_and_exit_code(app_harness: AppHarness
 
     with app_harness.session_factory() as session:
         # 1, 3, 4: Cwd, stdout, exit code
-        run_record = asyncio.run(provider.run(
-            session=session,
-            settings=app_harness.settings,
-            executable=sys.executable,
-            arguments=["-c", "import os; print(os.getcwd())"],
-            working_directory=str(repo_dir),
-            timeout_seconds=5,
-            project_id=project_id,
-            repository_id=repo_id,
-        ))
+        run_record = asyncio.run(
+            provider.run(
+                session=session,
+                settings=app_harness.settings,
+                executable=sys.executable,
+                arguments=["-c", "import os; print(os.getcwd())"],
+                working_directory=str(repo_dir),
+                timeout_seconds=5,
+                project_id=project_id,
+                repository_id=repo_id,
+            )
+        )
 
         assert run_record.status.value == "succeeded"
         assert run_record.exit_code == 0
@@ -50,7 +53,10 @@ def test_provider_preserves_cwd_and_stdout_and_exit_code(app_harness: AppHarness
         stdout_art = session.get(ArtifactRef, run_record.stdout_artifact_id)
         content = read_text_artifact(stdout_art, app_harness.settings)
         # Verify CWD (normalize case for Windows just in case)
-        assert str(repo_dir.resolve(strict=False)).lower() in content.lower() or str(repo_dir).lower() in content.lower()
+        assert (
+            str(repo_dir.resolve(strict=False)).lower() in content.lower()
+            or str(repo_dir).lower() in content.lower()
+        )
 
 
 def test_provider_preserves_env_and_stderr(app_harness: AppHarness):
@@ -60,17 +66,22 @@ def test_provider_preserves_env_and_stderr(app_harness: AppHarness):
 
     with app_harness.session_factory() as session:
         # 2, 3: env behavior, stderr capture
-        run_record = asyncio.run(provider.run(
-            session=session,
-            settings=app_harness.settings,
-            executable=sys.executable,
-            arguments=["-c", "import os, sys; print(os.environ.get('TEST_VAR', 'missing'), file=sys.stderr); sys.exit(1)"],
-            working_directory=str(repo_dir),
-            timeout_seconds=5,
-            project_id=project_id,
-            repository_id=repo_id,
-            environment={"TEST_VAR": "present"}
-        ))
+        run_record = asyncio.run(
+            provider.run(
+                session=session,
+                settings=app_harness.settings,
+                executable=sys.executable,
+                arguments=[
+                    "-c",
+                    "import os, sys; print(os.environ.get('TEST_VAR', 'missing'), file=sys.stderr); sys.exit(1)",
+                ],
+                working_directory=str(repo_dir),
+                timeout_seconds=5,
+                project_id=project_id,
+                repository_id=repo_id,
+                environment={"TEST_VAR": "present"},
+            )
+        )
 
         # 4: exit code
         assert run_record.status.value == "failed"
@@ -82,17 +93,19 @@ def test_provider_preserves_env_and_stderr(app_harness: AppHarness):
         assert "missing" in content
 
         # Now test with an allowlisted var
-        run_record2 = asyncio.run(provider.run(
-            session=session,
-            settings=app_harness.settings,
-            executable=sys.executable,
-            arguments=["-c", "import os, sys; print(os.environ.get('LANG', 'missing'))"],
-            working_directory=str(repo_dir),
-            timeout_seconds=5,
-            project_id=project_id,
-            repository_id=repo_id,
-            environment={"LANG": "en_US.UTF-8"}
-        ))
+        run_record2 = asyncio.run(
+            provider.run(
+                session=session,
+                settings=app_harness.settings,
+                executable=sys.executable,
+                arguments=["-c", "import os, sys; print(os.environ.get('LANG', 'missing'))"],
+                working_directory=str(repo_dir),
+                timeout_seconds=5,
+                project_id=project_id,
+                repository_id=repo_id,
+                environment={"LANG": "en_US.UTF-8"},
+            )
+        )
         stdout_art = session.get(ArtifactRef, run_record2.stdout_artifact_id)
         content2 = read_text_artifact(stdout_art, app_harness.settings)
         assert "en_US.UTF-8" in content2
@@ -105,16 +118,18 @@ def test_provider_preserves_timeout_behavior(app_harness: AppHarness):
 
     with app_harness.session_factory() as session:
         # 5: Timeout
-        run_record = asyncio.run(provider.run(
-            session=session,
-            settings=app_harness.settings,
-            executable=sys.executable,
-            arguments=["-c", "import time; time.sleep(10)"],
-            working_directory=str(repo_dir),
-            timeout_seconds=1, # short timeout
-            project_id=project_id,
-            repository_id=repo_id,
-        ))
+        run_record = asyncio.run(
+            provider.run(
+                session=session,
+                settings=app_harness.settings,
+                executable=sys.executable,
+                arguments=["-c", "import time; time.sleep(10)"],
+                working_directory=str(repo_dir),
+                timeout_seconds=1,  # short timeout
+                project_id=project_id,
+                repository_id=repo_id,
+            )
+        )
 
         assert run_record.status.value == "timed_out"
         assert run_record.error_code == "TIMED_OUT"
@@ -127,17 +142,19 @@ def test_provider_preserves_scope_validation(app_harness: AppHarness):
 
     with app_harness.session_factory() as session:
         # 6: Scope validation
-        run_record = asyncio.run(provider.run(
-            session=session,
-            settings=app_harness.settings,
-            executable=sys.executable,
-            arguments=["-c", "print('hello')"],
-            # Give an obviously out of scope working directory
-            working_directory=os.path.abspath(os.sep),
-            timeout_seconds=5,
-            project_id=project_id,
-            repository_id=repo_id,
-        ))
+        run_record = asyncio.run(
+            provider.run(
+                session=session,
+                settings=app_harness.settings,
+                executable=sys.executable,
+                arguments=["-c", "print('hello')"],
+                # Give an obviously out of scope working directory
+                working_directory=os.path.abspath(os.sep),
+                timeout_seconds=5,
+                project_id=project_id,
+                repository_id=repo_id,
+            )
+        )
 
         assert run_record.status.value == "blocked"
         assert run_record.error_code == "SCOPE_VALIDATION_FAILED"
@@ -150,16 +167,21 @@ def test_provider_preserves_artifact_generation(app_harness: AppHarness):
 
     with app_harness.session_factory() as session:
         # 7: Artifact generation
-        run_record = asyncio.run(provider.run(
-            session=session,
-            settings=app_harness.settings,
-            executable=sys.executable,
-            arguments=["-c", "import sys; print('stdout_text'); print('stderr_text', file=sys.stderr)"],
-            working_directory=str(repo_dir),
-            timeout_seconds=5,
-            project_id=project_id,
-            repository_id=repo_id,
-        ))
+        run_record = asyncio.run(
+            provider.run(
+                session=session,
+                settings=app_harness.settings,
+                executable=sys.executable,
+                arguments=[
+                    "-c",
+                    "import sys; print('stdout_text'); print('stderr_text', file=sys.stderr)",
+                ],
+                working_directory=str(repo_dir),
+                timeout_seconds=5,
+                project_id=project_id,
+                repository_id=repo_id,
+            )
+        )
 
         assert run_record.stdout_artifact_id is not None
         assert run_record.stderr_artifact_id is not None

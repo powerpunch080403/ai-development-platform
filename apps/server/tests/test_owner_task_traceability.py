@@ -13,6 +13,7 @@ from aidp_server.db.models import (
 )
 from conftest import AppHarness
 
+
 def test_owner_task_traceability(app_harness: AppHarness):
     from test_conversations_and_tools import authenticate, create_project
 
@@ -60,13 +61,17 @@ def test_owner_task_traceability(app_harness: AppHarness):
             agent_run_id=agent_run.id,
             project_id=project_id,
             risk_level="R1",
-            arguments_json={"title": "Traced Task", "instructions": "Do something", "write_scope": ["."]},
+            arguments_json={
+                "title": "Traced Task",
+                "instructions": "Do something",
+                "write_scope": ["."],
+            },
             status=ToolCallStatus.SUCCEEDED,
             result_json={"task_id": task.id},
         )
         db_session.add(tool_call)
         db_session.commit()
-        
+
         task_id = task.id
         agent_run_id = agent_run.id
         tool_call_id = tool_call.id
@@ -93,6 +98,7 @@ def test_owner_task_traceability(app_harness: AppHarness):
         assert db_session.scalar(select(func.count(WorkerRun.id))) == worker_runs_before
         assert db_session.scalar(select(func.count(TaskAttempt.id))) == attempts_before
         assert db_session.scalar(select(func.count(ApprovalRequest.id))) == approvals_before
+
 
 def test_owner_task_traceability_no_source(app_harness: AppHarness):
     from test_conversations_and_tools import authenticate, create_project
@@ -121,9 +127,11 @@ def test_owner_task_traceability_no_source(app_harness: AppHarness):
     assert data["task_id"] == task_id
     assert data["source"] is None
 
+
 def test_owner_task_traceability_not_found(app_harness: AppHarness):
     from test_conversations_and_tools import authenticate
+
     authenticate(app_harness)
-    
+
     response = app_harness.client.get("/tasks/non-existent-task-id/trace")
     assert response.status_code == 404

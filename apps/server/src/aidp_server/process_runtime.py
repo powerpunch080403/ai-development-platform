@@ -8,6 +8,7 @@ from aidp_server.redaction import redact_args, redact_text
 from aidp_server.artifacts import create_text_artifact
 from aidp_server.process_scope import validate_scope
 
+
 class ProcessRuntimeProvider(Protocol):
     async def run(
         self,
@@ -27,8 +28,8 @@ class ProcessRuntimeProvider(Protocol):
         tool_call_id: str | None = None,
         worktree_id: str | None = None,
         environment: dict[str, str] | None = None,
-    ) -> ProcessRun:
-        ...
+    ) -> ProcessRun: ...
+
 
 class NonInteractiveSubprocessRuntimeProvider:
     async def run(
@@ -81,7 +82,7 @@ class NonInteractiveSubprocessRuntimeProvider:
             status=ProcessRunStatus.BLOCKED if scope_error else ProcessRunStatus.RUNNING,
             timeout_seconds=timeout_seconds,
             started_at=utc_now() if not scope_error else None,
-            error_message=scope_error
+            error_message=scope_error,
         )
         session.add(run_record)
         session.flush()
@@ -95,6 +96,7 @@ class NonInteractiveSubprocessRuntimeProvider:
         start_time = asyncio.get_running_loop().time()
         try:
             from aidp_server.process_environment import build_process_environment
+
             safe_env = build_process_environment(environment)
 
             process = await asyncio.create_subprocess_exec(
@@ -108,7 +110,9 @@ class NonInteractiveSubprocessRuntimeProvider:
             )
 
             try:
-                stdout_data, stderr_data = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+                stdout_data, stderr_data = await asyncio.wait_for(
+                    process.communicate(), timeout=timeout_seconds
+                )
                 exit_code = process.returncode
                 timed_out = False
             except asyncio.TimeoutError:
@@ -185,6 +189,7 @@ class NonInteractiveSubprocessRuntimeProvider:
             run_record.error_code = "EXECUTION_ERROR"
 
         return run_record
+
 
 def get_process_runtime_provider() -> ProcessRuntimeProvider:
     return NonInteractiveSubprocessRuntimeProvider()

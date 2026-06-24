@@ -22,7 +22,9 @@ def test_worker_start_creates_device_if_missing(app_harness: AppHarness):
         user, agent_run, task = setup_test_data(db_session, project_id)
 
         # The authenticate() call creates a WEB_UI device.
-        devices_before = db_session.scalars(select(Device).where(Device.local_user_id == user.id)).all()
+        devices_before = db_session.scalars(
+            select(Device).where(Device.local_user_id == user.id)
+        ).all()
         assert len(devices_before) == 1
         initial_device_id = devices_before[0].id
 
@@ -48,7 +50,9 @@ def test_worker_start_creates_device_if_missing(app_harness: AppHarness):
         assert "task_attempt_id" in result
 
         # Check that no new Device was created since we fallback to the existing one
-        devices_after = db_session.scalars(select(Device).where(Device.local_user_id == user.id)).all()
+        devices_after = db_session.scalars(
+            select(Device).where(Device.local_user_id == user.id)
+        ).all()
         assert len(devices_after) == 1
 
         # Check that Worker references the existing device
@@ -96,7 +100,9 @@ def test_worker_start_reuses_existing_device(app_harness: AppHarness):
         assert "task_attempt_id" in result
 
         # Check that no new Device was created
-        devices_after = db_session.scalars(select(Device).where(Device.local_user_id == user.id)).all()
+        devices_after = db_session.scalars(
+            select(Device).where(Device.local_user_id == user.id)
+        ).all()
         assert len(devices_after) == 2
         assert any(d.id == existing_device.id for d in devices_after)
 
@@ -104,4 +110,6 @@ def test_worker_start_reuses_existing_device(app_harness: AppHarness):
         worker_run = db_session.get(WorkerRun, result["worker_run_id"])
         worker = db_session.get(Worker, worker_run.worker_id)
         assert worker.device_id == existing_device.id
-        assert worker.worker_kind.value == "mock" # currently adapter="agy" maps to kind="mock" in terms of enum
+        assert (
+            worker.worker_kind.value == "mock"
+        )  # currently adapter="agy" maps to kind="mock" in terms of enum

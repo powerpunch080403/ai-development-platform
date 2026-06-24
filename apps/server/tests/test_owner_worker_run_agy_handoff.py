@@ -122,11 +122,14 @@ def test_handoff_agy_worker_run_schedules_background_task(app_harness: AppHarnes
     project_id = create_project(app_harness)
 
     from aidp_server.config import get_settings
+
     settings = get_settings()
     monkeypatch.setattr(settings, "allow_owner_agy_worker_run", True)
 
     with app_harness.session_factory() as db_session:
-        user, agent_run, task, attempt, worker_run, tool_call = setup_test_data(db_session, project_id, adapter_kind="agy")
+        user, agent_run, task, attempt, worker_run, tool_call = setup_test_data(
+            db_session, project_id, adapter_kind="agy"
+        )
 
         bg_tasks = MockBackgroundTasks()
 
@@ -165,24 +168,33 @@ async def test_background_agy_runner_calls_existing_boundary(app_harness: AppHar
     project_id = create_project(app_harness)
 
     from aidp_server.config import get_settings
+
     settings = get_settings()
     monkeypatch.setattr(settings, "allow_owner_agy_worker_run", True)
 
     with app_harness.session_factory() as db_session:
-        user, agent_run, task, attempt, worker_run, tool_call = setup_test_data(db_session, project_id, adapter_kind="agy")
+        user, agent_run, task, attempt, worker_run, tool_call = setup_test_data(
+            db_session, project_id, adapter_kind="agy"
+        )
         worker_run_id = worker_run.id
         db_session.commit()
 
     # Mock run_existing_agy_worker_run
     called_with = {}
+
     async def mock_run_existing(session, settings, worker_run_arg, mode):
         called_with["worker_run_id"] = worker_run_arg.id
         called_with["mode"] = mode
         return {"status": "handoff_started"}
 
     import aidp_server.worker_execution
-    monkeypatch.setattr(aidp_server.worker_execution, "run_existing_agy_worker_run", mock_run_existing)
-    monkeypatch.setattr(aidp_server.worker_execution, "get_session_factory", lambda: app_harness.session_factory)
+
+    monkeypatch.setattr(
+        aidp_server.worker_execution, "run_existing_agy_worker_run", mock_run_existing
+    )
+    monkeypatch.setattr(
+        aidp_server.worker_execution, "get_session_factory", lambda: app_harness.session_factory
+    )
 
     # Call the background task directly
     await background_agy_runner(worker_run_id=worker_run_id)

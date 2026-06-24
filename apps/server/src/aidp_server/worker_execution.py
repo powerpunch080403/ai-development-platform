@@ -80,7 +80,9 @@ class LocalBackgroundWorkerExecutionService:
 
         # The background task needs its own session to avoid sharing the request's connection
         if not self._background_tasks:
-            raise RuntimeError("background_tasks is required for AGY handoff in local background execution")
+            raise RuntimeError(
+                "background_tasks is required for AGY handoff in local background execution"
+            )
 
         self._background_tasks.add_task(
             background_agy_runner,
@@ -120,5 +122,8 @@ async def background_agy_runner(worker_run_id: str) -> None:
             # In a full implementation we would capture the error in worker_run
             pass
 
-def get_worker_execution_service(background_tasks: BackgroundTasks | None = None) -> WorkerExecutionService:
+
+def get_worker_execution_service(
+    background_tasks: BackgroundTasks | None = None,
+) -> WorkerExecutionService:
     return LocalBackgroundWorkerExecutionService(background_tasks)

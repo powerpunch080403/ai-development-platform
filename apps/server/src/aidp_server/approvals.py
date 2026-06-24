@@ -99,10 +99,12 @@ def create_approval_request(
 
 def find_valid_approval_for_merge(session: Session, fingerprint: str) -> ApprovalRequest | None:
     return session.scalar(
-        select(ApprovalRequest).where(
+        select(ApprovalRequest)
+        .where(
             ApprovalRequest.approval_fingerprint == fingerprint,
             ApprovalRequest.status == ApprovalStatus.APPROVED,
-        ).order_by(ApprovalRequest.created_at.desc())
+        )
+        .order_by(ApprovalRequest.created_at.desc())
     )
 
 

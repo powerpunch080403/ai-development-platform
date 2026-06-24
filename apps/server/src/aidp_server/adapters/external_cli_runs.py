@@ -16,6 +16,7 @@ ACTIVE_WORKER_RUN_STATUSES = {
     RecordStatus.RUNNING,
 }
 
+
 def find_active_external_cli_worker_run(session: Session, task_attempt_id: str) -> WorkerRun | None:
     return session.scalar(
         select(WorkerRun).where(
@@ -24,6 +25,7 @@ def find_active_external_cli_worker_run(session: Session, task_attempt_id: str) 
             WorkerRun.status.in_(ACTIVE_WORKER_RUN_STATUSES),
         )
     )
+
 
 def assert_no_active_external_cli_worker_run(session: Session, task_attempt_id: str) -> None:
     active_run = find_active_external_cli_worker_run(session, task_attempt_id)
@@ -34,5 +36,5 @@ def assert_no_active_external_cli_worker_run(session: Session, task_attempt_id: 
                 "code": "ACTIVE_EXTERNAL_CLI_RUN_EXISTS",
                 "worker_run_id": active_run.id,
                 "task_attempt_id": task_attempt_id,
-            }
+            },
         )

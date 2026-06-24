@@ -4,8 +4,6 @@ from aidp_server.db.models import ProcessRun
 from aidp_server.config import Settings
 
 
-
-
 async def execute_process_async(
     session: Session,
     settings: Settings,
@@ -25,8 +23,9 @@ async def execute_process_async(
     environment: dict[str, str] | None = None,
 ) -> ProcessRun:
     from aidp_server.process_runtime import get_process_runtime_provider
+
     provider = get_process_runtime_provider()
-    
+
     return await provider.run(
         session=session,
         settings=settings,

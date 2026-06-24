@@ -2,9 +2,17 @@ from pathlib import Path
 
 from aidp_server.db.models import WorkerRun, RecordStatus, TaskAttempt, utc_now
 from conftest import AppHarness
-from test_external_cli_adapter_contract import setup_claimed_attempt, authenticate, create_repository, git
+from test_external_cli_adapter_contract import (
+    setup_claimed_attempt,
+    authenticate,
+    create_repository,
+    git,
+)
 
-def test_external_cli_active_run_blocks_new_dry_run(app_harness: AppHarness, tmp_path: Path) -> None:
+
+def test_external_cli_active_run_blocks_new_dry_run(
+    app_harness: AppHarness, tmp_path: Path
+) -> None:
     authenticate(app_harness)
     source = create_repository(tmp_path / "active_run_test")
     aid, worker_id, wt, task_id, repo_id = setup_claimed_attempt(app_harness, source)
@@ -33,7 +41,7 @@ def test_external_cli_active_run_blocks_new_dry_run(app_harness: AppHarness, tmp
             "adapter_kind": "external_cli_dry_run",
             "worker_id": worker_id,
             "dry_run": True,
-        }
+        },
     )
     assert res.status_code == 409
     assert res.json()["detail"]["code"] == "ACTIVE_EXTERNAL_CLI_RUN_EXISTS"
@@ -42,7 +50,7 @@ def test_external_cli_active_run_blocks_new_dry_run(app_harness: AppHarness, tmp
     base_sha = git(source, "rev-parse", "HEAD")
     assert git(source, "rev-parse", "HEAD") == base_sha
     assert git(source, "status", "--short") == ""
-    
+
     # TaskAttempt state shouldn't change to committed/reviewing
     attempt_res = app_harness.client.get(f"/task-attempts/{aid}").json()
     assert attempt_res["status"] in ("preparing_worktree", "created", "running_worker")
@@ -59,13 +67,15 @@ def test_external_cli_active_run_blocks_new_dry_run(app_harness: AppHarness, tmp
             "adapter_kind": "external_cli_dry_run",
             "worker_id": worker_id,
             "dry_run": True,
-        }
+        },
     )
     assert res.status_code == 200
     assert res.json()["status"] == "succeeded"
 
 
-def test_external_cli_created_run_blocks_new_dry_run(app_harness: AppHarness, tmp_path: Path) -> None:
+def test_external_cli_created_run_blocks_new_dry_run(
+    app_harness: AppHarness, tmp_path: Path
+) -> None:
     authenticate(app_harness)
     source = create_repository(tmp_path / "created_run_test")
     aid, worker_id, wt, task_id, repo_id = setup_claimed_attempt(app_harness, source)
@@ -92,13 +102,15 @@ def test_external_cli_created_run_blocks_new_dry_run(app_harness: AppHarness, tm
             "adapter_kind": "external_cli_dry_run",
             "worker_id": worker_id,
             "dry_run": True,
-        }
+        },
     )
     assert res.status_code == 409
     assert res.json()["detail"]["code"] == "ACTIVE_EXTERNAL_CLI_RUN_EXISTS"
 
 
-def test_external_cli_failed_run_allows_new_dry_run(app_harness: AppHarness, tmp_path: Path) -> None:
+def test_external_cli_failed_run_allows_new_dry_run(
+    app_harness: AppHarness, tmp_path: Path
+) -> None:
     authenticate(app_harness)
     source = create_repository(tmp_path / "failed_run_test")
     aid, worker_id, wt, task_id, repo_id = setup_claimed_attempt(app_harness, source)
@@ -125,6 +137,6 @@ def test_external_cli_failed_run_allows_new_dry_run(app_harness: AppHarness, tmp
             "adapter_kind": "external_cli_dry_run",
             "worker_id": worker_id,
             "dry_run": True,
-        }
+        },
     )
     assert res.status_code == 200

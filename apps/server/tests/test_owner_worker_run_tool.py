@@ -167,7 +167,9 @@ def test_worker_run_unsupported_adapter(app_harness: AppHarness):
 
     with app_harness.session_factory() as db_session:
         # Use mock for the worker to satisfy DB constraints, but 'manual' for the run
-        user, agent_run, task, attempt, worker_run = setup_test_data(db_session, project_id, adapter_kind="mock")
+        user, agent_run, task, attempt, worker_run = setup_test_data(
+            db_session, project_id, adapter_kind="mock"
+        )
         worker_run.adapter_kind = "manual"
         db_session.flush()
 

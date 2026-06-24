@@ -138,7 +138,9 @@ def test_tool_registry_seed_is_idempotent(app_harness: AppHarness) -> None:
 def test_tool_call_validation_status_and_audit(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     registry = app_harness.client.get("/tool-registry")
-    assert registry.status_code == 200 and len(registry.json()) == len([a for a in ACTION_CATALOG if a.enabled_in_tool_registry])
+    assert registry.status_code == 200 and len(registry.json()) == len(
+        [a for a in ACTION_CATALOG if a.enabled_in_tool_registry]
+    )
 
     missing_key = app_harness.client.post(
         "/tool-calls", json={"tool_name": "project.create", "arguments_json": {}}

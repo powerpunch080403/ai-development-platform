@@ -1,8 +1,14 @@
 import os
 import pytest
 
-from test_external_cli_adapter_contract import authenticate, create_repository, setup_claimed_attempt, git
+from test_external_cli_adapter_contract import (
+    authenticate,
+    create_repository,
+    setup_claimed_attempt,
+    git,
+)
 from aidp_server.db.models import Task, GitWorktree, TaskAttempt, WorkerRun
+
 
 def test_real_agy_write_scope_violation_is_rejected(app_harness, tmp_path) -> None:
     if os.environ.get("AIDP_RUN_REAL_AGY_TESTS") != "true":
@@ -29,14 +35,21 @@ def test_real_agy_write_scope_violation_is_rejected(app_harness, tmp_path) -> No
     # Invoke the controlled endpoint with the scope violation test mode
     response = app_harness.client.post(
         f"/task-attempts/{attempt_id}/external-cli/antigravity/run-experimental",
-        json={"adapter_kind": "antigravity_cli", "worker_id": worker_id, "mode": "controlled_scope_violation_test"}
+        json={
+            "adapter_kind": "antigravity_cli",
+            "worker_id": worker_id,
+            "mode": "controlled_scope_violation_test",
+        },
     )
     assert response.status_code == 200, response.text
     res = response.json()
-    
+
     # Process run succeeds (the command finishes), but worker run fails due to write scope violation
     assert res["status"] == "failed"
-    assert "WRITE_SCOPE_VIOLATION" in res.get("error_code", "") or "scope" in res.get("error_message", "").lower()
+    assert (
+        "WRITE_SCOPE_VIOLATION" in res.get("error_code", "")
+        or "scope" in res.get("error_message", "").lower()
+    )
 
     # Verify state in DB
     with app_harness.session_factory() as session:
@@ -46,10 +59,10 @@ def test_real_agy_write_scope_violation_is_rejected(app_harness, tmp_path) -> No
 
         attempt = session.get(TaskAttempt, attempt_id)
         assert attempt.status.value != "committed"
-        
+
         task = session.get(Task, task_id)
         assert task.status.value != "waiting_for_review"
-        
+
         worker_run = session.query(WorkerRun).filter_by(task_attempt_id=attempt_id).first()
         assert worker_run.status.value == "failed"
 
