@@ -105,6 +105,7 @@ def execute_owner_tool(
             local_user_id=tool_call.user_id,
             project_id=tool_call.project_id,
             agent_run_id=tool_call.agent_run_id,
+            repository_id=args.get("repository_id"),
             title=args.get("title", "Untitled Task"),
             instructions=args.get("instructions", ""),
             status=TaskStatus.DRAFT,
@@ -119,7 +120,7 @@ def execute_owner_tool(
             local_user_id=tool_call.user_id,
             project_id=tool_call.project_id,
             agent_run_id=tool_call.agent_run_id,
-            metadata={"task_id": task.id, "source": "owner_tool"},
+            metadata={"task_id": task.id, "source": "owner_tool", "repository_id": task.repository_id},
         )
         return {"task_id": task.id}
 

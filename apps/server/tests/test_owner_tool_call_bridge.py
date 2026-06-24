@@ -1,7 +1,11 @@
+import subprocess
+import tempfile
+from pathlib import Path
+
 import pytest
 from sqlalchemy import select
 
-from aidp_server.db.models import AgentRun, ToolCall, ToolCallStatus, AuditEvent, LocalUser, Task
+from aidp_server.db.models import AgentRun, AuditEvent, LocalUser, Task, TaskAttempt, ToolCall, ToolCallStatus
 from conftest import AppHarness
 
 
@@ -96,6 +100,61 @@ def test_task_create_creates_durable_record(app_harness: AppHarness, db_agent_ru
         assert task.title == "Fix something"
         assert task.instructions == "Do it"
         assert task.project_id == db_agent_run.project_id
+
+
+def test_task_create_stores_repository_id(app_harness: AppHarness, db_agent_run: AgentRun):
+    """repository_id in arguments_json must be stored on Task and flow to TaskAttempt."""
+    repo_dir = tempfile.mkdtemp()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=repo_dir, check=True)
+    (Path(repo_dir) / "README.md").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, check=True)
+
+    project_id = db_agent_run.project_id
+    r = app_harness.client.post(
+        f"/projects/{project_id}/repositories",
+        json={"repository_path": repo_dir, "repository_role": "primary"},
+    )
+    assert r.status_code == 201, r.json()
+    repo_id = r.json()["id"]
+
+    r = app_harness.client.post(
+        f"/agent-runs/{db_agent_run.id}/tool-calls",
+        json={
+            "provider_kind": "codex_cli",
+            "tool_name": "task.create",
+            "arguments_json": {
+                "title": "Repo task",
+                "instructions": "With repo",
+                "repository_id": repo_id,
+            },
+        },
+    )
+    assert r.status_code == 201, r.json()
+    task_id = r.json()["result_json"]["task_id"]
+
+    with app_harness.session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        assert task.repository_id == repo_id, "repository_id must be stored on Task"
+
+    r = app_harness.client.post(
+        f"/agent-runs/{db_agent_run.id}/tool-calls",
+        json={
+            "provider_kind": "codex_cli",
+            "tool_name": "worker.start_task_attempt",
+            "arguments_json": {"task_id": task_id, "worker_adapter": "mock"},
+        },
+    )
+    assert r.status_code == 201, r.json()
+    attempt_id = r.json()["result_json"]["task_attempt_id"]
+
+    with app_harness.session_factory() as session:
+        attempt = session.get(TaskAttempt, attempt_id)
+        assert attempt is not None
+        assert attempt.repository_id == repo_id, "repository_id must propagate to TaskAttempt"
 
 
 def test_unknown_tool_is_rejected(app_harness: AppHarness, db_agent_run: AgentRun):
