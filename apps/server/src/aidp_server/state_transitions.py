@@ -73,7 +73,14 @@ TASK_TRANSITIONS: Mapping[TaskStatus, Set[TaskStatus]] = {
 
 TASK_ATTEMPT_TRANSITIONS: Mapping[TaskAttemptStatus, Set[TaskAttemptStatus]] = {
     TaskAttemptStatus.CREATED: {
+        TaskAttemptStatus.QUEUED_WORKER,
         TaskAttemptStatus.PREPARING_WORKTREE,
+        TaskAttemptStatus.RUNNING_WORKER,
+        TaskAttemptStatus.WORKER_FAILED,
+        TaskAttemptStatus.FAILED,
+        TaskAttemptStatus.CANCELLED,
+    },
+    TaskAttemptStatus.QUEUED_WORKER: {
         TaskAttemptStatus.RUNNING_WORKER,
         TaskAttemptStatus.WORKER_FAILED,
         TaskAttemptStatus.FAILED,
@@ -182,7 +189,14 @@ GIT_WORKTREE_TRANSITIONS: Mapping[GitWorktreeStatus, Set[GitWorktreeStatus]] = {
 
 WORKER_RUN_TRANSITIONS: Mapping[RecordStatus, Set[RecordStatus]] = {
     RecordStatus.CREATED: {
+        RecordStatus.QUEUED,
         RecordStatus.RUNNING,
+        RecordStatus.CANCELLED,
+        RecordStatus.SKIPPED,
+    },
+    RecordStatus.QUEUED: {
+        RecordStatus.RUNNING,
+        RecordStatus.FAILED,
         RecordStatus.CANCELLED,
         RecordStatus.SKIPPED,
     },
@@ -234,6 +248,11 @@ PUBLIC_TASK_TRANSITIONS[TaskStatus.WAITING_FOR_REVIEW].discard(TaskStatus.COMPLE
 
 PUBLIC_TASK_ATTEMPT_TRANSITIONS: Mapping[TaskAttemptStatus, Set[TaskAttemptStatus]] = {
     TaskAttemptStatus.CREATED: {
+        TaskAttemptStatus.WORKER_FAILED,
+        TaskAttemptStatus.FAILED,
+        TaskAttemptStatus.CANCELLED,
+    },
+    TaskAttemptStatus.QUEUED_WORKER: {
         TaskAttemptStatus.WORKER_FAILED,
         TaskAttemptStatus.FAILED,
         TaskAttemptStatus.CANCELLED,
