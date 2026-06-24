@@ -1,16 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
-from aidp_server.db.models import (
-    TaskAttempt,
-    Task,
-    Worker,
-    WorkerRun,
-    RecordStatus,
-    ArtifactKind,
-    ArtifactRef,
-    GitWorktree,
-)
+from aidp_server.db.models import TaskAttempt, Task, Worker, WorkerRun, RecordStatus, ArtifactKind, ArtifactRef, GitWorktree
 from aidp_server.worktrees import apply_worktree_result
 from aidp_server.artifacts import create_text_artifact
 from aidp_server.config import Settings
@@ -21,13 +12,12 @@ from aidp_server.write_scope import normalize_write_scope
 from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDecisionResult
 import json
 
-
 def start_manual_worker(
-    session: Session,
-    settings: Settings,
-    current: CurrentAuth,
-    attempt: TaskAttempt,
-    notes: str | None = None,
+    session: Session, 
+    settings: Settings, 
+    current: CurrentAuth, 
+    attempt: TaskAttempt, 
+    notes: str | None = None
 ) -> tuple[WorkerRun, GitWorktree]:
     task = session.get(Task, attempt.task_id)
     if not task:
@@ -46,7 +36,6 @@ def start_manual_worker(
     if not worktree:
         # Create worktree using the router function which handles all the validation and git clone
         from aidp_server.worktrees import create_worktree
-
         try:
             wt_view = create_worktree(attempt.id, current, session, settings)
             worktree = session.get(GitWorktree, wt_view.id)
@@ -54,11 +43,7 @@ def start_manual_worker(
             raise ValueError(f"Failed to create worktree: {e}")
     else:
         # Worktree exists, check safe state
-        if worktree.status not in (
-            GitWorktreeStatus.READY,
-            GitWorktreeStatus.IN_USE,
-            GitWorktreeStatus.DIRTY_RESULT,
-        ):
+        if worktree.status not in (GitWorktreeStatus.READY, GitWorktreeStatus.IN_USE, GitWorktreeStatus.DIRTY_RESULT):
             raise ValueError(f"Worktree in invalid status for manual worker: {worktree.status}")
 
     # Create WorkerRun
@@ -71,7 +56,7 @@ def start_manual_worker(
         worker_id=worker.id,
         adapter_kind="manual",
         status=RecordStatus.RUNNING,
-        started_at=utc_now(),
+        started_at=utc_now()
     )
     session.add(worker_run)
     session.flush()
@@ -101,18 +86,18 @@ def start_manual_worker(
         attempt_id=attempt.id,
         worker_id=worker.id,
     )
-
+    
     worktree.status = GitWorktreeStatus.IN_USE
 
     return worker_run, worktree
 
 
 def submit_manual_worker(
-    session: Session,
-    settings: Settings,
-    attempt: TaskAttempt,
-    commit_message: str | None = None,
-    result_summary: str | None = None,
+    session: Session, 
+    settings: Settings, 
+    attempt: TaskAttempt, 
+    commit_message: str | None = None, 
+    result_summary: str | None = None
 ) -> tuple[WorkerRun, ArtifactRef | None, str | None]:
     if not attempt.claimed_by_worker_id:
         raise ValueError("Attempt is not claimed")
@@ -134,50 +119,37 @@ def submit_manual_worker(
     worktree = session.scalar(select(GitWorktree).where(GitWorktree.task_attempt_id == attempt.id))
     if not worktree:
         raise ValueError("Worktree not found for attempt")
-
-    if worktree.status not in (
-        GitWorktreeStatus.READY,
-        GitWorktreeStatus.IN_USE,
-        GitWorktreeStatus.DIRTY_RESULT,
-    ):
+    
+    if worktree.status not in (GitWorktreeStatus.READY, GitWorktreeStatus.IN_USE, GitWorktreeStatus.DIRTY_RESULT):
         raise ValueError(f"Worktree in invalid status for submission: {worktree.status}")
 
     pd, risk = evaluate_action("worker.run_manual")
     if pd == PolicyDecisionResult.DENY:
         raise ValueError("Policy denied worker.run_manual")
     create_policy_decision(
-        session,
-        attempt.local_user_id,
-        "worker.run_manual",
-        project_id=attempt.project_id,
-        repository_id=attempt.repository_id,
-        task_id=attempt.task_id,
-        task_attempt_id=attempt.id,
+        session, attempt.local_user_id, "worker.run_manual",
+        project_id=attempt.project_id, repository_id=attempt.repository_id,
+        task_id=attempt.task_id, task_attempt_id=attempt.id
     )
 
     commit_msg = commit_message or "chore: apply manual worker result"
-
+    
     try:
         # Commit result inside worktree (this ensures changes are isolated in worktree branch)
         apply_worktree_result(
-            session,
-            settings,
-            worktree,
-            commit_msg,
-            attempt.local_user_id,
-            "Manual worker result submitted",
+            session, settings, worktree, commit_msg, attempt.local_user_id, "Manual worker result submitted"
         )
-
+        
         worker_run.status = RecordStatus.SUCCEEDED
         worker_run.completed_at = utc_now()
         worker_run.summary = result_summary or "Manual worker successfully submitted changes"
-
+        
         log_lines = [
             f"Manual Worker run {worker_run.id} submitted",
             f"Result summary: {worker_run.summary}",
-            f"Result commit SHA: {worktree.result_commit_sha}",
+            f"Result commit SHA: {worktree.result_commit_sha}"
         ]
-
+        
         artifact = create_text_artifact(
             session=session,
             settings=settings,
@@ -190,7 +162,7 @@ def submit_manual_worker(
             attempt_id=attempt.id,
             worker_id=worker.id,
         )
-
+        
         return worker_run, artifact, worktree.result_commit_sha
 
     except ValueError as e:
@@ -200,29 +172,23 @@ def submit_manual_worker(
         raise ValueError(f"Failed to submit manual result: {e}")
 
 
-def fail_worker_run(
-    session: Session,
-    settings: Settings,
-    worker_run: WorkerRun,
-    error_message: str,
-    error_code: str | None = None,
-):
+def fail_worker_run(session: Session, settings: Settings, worker_run: WorkerRun, error_message: str, error_code: str | None = None):
     if worker_run.status != RecordStatus.RUNNING:
         raise ValueError("Worker run is not running")
-
+        
     worker_run.status = RecordStatus.FAILED
     worker_run.failed_at = utc_now()
     worker_run.error_code = error_code or "MANUAL_ERROR"
     worker_run.error_message = error_message
-
+    
     attempt = session.get(TaskAttempt, worker_run.task_attempt_id)
     if attempt:
         attempt.status = TaskAttemptStatus.WORKER_FAILED
         attempt.error_code = worker_run.error_code
         attempt.error_message = error_message
-
+        
         worker = session.get(Worker, attempt.claimed_by_worker_id)
-
+        
         create_text_artifact(
             session=session,
             settings=settings,
@@ -236,24 +202,21 @@ def fail_worker_run(
             worker_id=worker.id if worker else "",
         )
 
-
-def cancel_worker_run(
-    session: Session, settings: Settings, worker_run: WorkerRun, reason: str | None = None
-):
+def cancel_worker_run(session: Session, settings: Settings, worker_run: WorkerRun, reason: str | None = None):
     if worker_run.status != RecordStatus.RUNNING:
         raise ValueError("Worker run is not running")
-
+        
     worker_run.status = RecordStatus.CANCELLED
     worker_run.cancelled_at = utc_now()
     worker_run.summary = reason or "Cancelled by user"
-
+    
     attempt = session.get(TaskAttempt, worker_run.task_attempt_id)
     if attempt:
         attempt.status = TaskAttemptStatus.CANCELLED
         attempt.error_message = worker_run.summary
-
+        
         worker = session.get(Worker, attempt.claimed_by_worker_id)
-
+        
         create_text_artifact(
             session=session,
             settings=settings,

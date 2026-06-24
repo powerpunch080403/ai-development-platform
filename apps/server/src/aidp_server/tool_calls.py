@@ -315,7 +315,6 @@ def request_owner_tool_call_endpoint(
     background_tasks: BackgroundTasks,
 ) -> ToolCallView:
     from aidp_server.owner_tools import request_owner_tool_call
-
     run = session.get(AgentRun, run_id)
     if not run or run.local_user_id != current.user.id:
         raise HTTPException(status_code=404, detail="AgentRun not found")

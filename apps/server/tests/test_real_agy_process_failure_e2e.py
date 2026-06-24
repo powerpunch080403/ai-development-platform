@@ -1,14 +1,8 @@
 import os
 import pytest
 
-from test_external_cli_adapter_contract import (
-    authenticate,
-    create_repository,
-    setup_claimed_attempt,
-    git,
-)
+from test_external_cli_adapter_contract import authenticate, create_repository, setup_claimed_attempt, git
 from aidp_server.db.models import Task, GitWorktree, TaskAttempt, WorkerRun, ProcessRun
-
 
 def test_real_agy_timeout_is_failed_safely(app_harness, tmp_path) -> None:
     if os.environ.get("AIDP_RUN_REAL_AGY_TESTS") != "true":
@@ -37,15 +31,11 @@ def test_real_agy_timeout_is_failed_safely(app_harness, tmp_path) -> None:
     # Invoke the controlled endpoint with the timeout test mode
     response = app_harness.client.post(
         f"/task-attempts/{attempt_id}/external-cli/antigravity/run-experimental",
-        json={
-            "adapter_kind": "antigravity_cli",
-            "worker_id": worker_id,
-            "mode": "controlled_timeout_test",
-        },
+        json={"adapter_kind": "antigravity_cli", "worker_id": worker_id, "mode": "controlled_timeout_test"}
     )
     assert response.status_code == 200, response.text
     res = response.json()
-
+    
     # Worker run fails due to timeout
     assert res["status"] in ("failed", "timed_out")
     error_code = res.get("error_code", "")
@@ -59,10 +49,10 @@ def test_real_agy_timeout_is_failed_safely(app_harness, tmp_path) -> None:
 
         attempt = session.get(TaskAttempt, attempt_id)
         assert attempt.status.value != "committed"
-
+        
         task = session.get(Task, task_id)
         assert task.status.value != "waiting_for_review"
-
+        
         worker_run = session.query(WorkerRun).filter_by(task_attempt_id=attempt_id).first()
         assert worker_run.status.value in ("failed", "timed_out")
 

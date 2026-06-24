@@ -5,7 +5,6 @@ from aidp_server.db.models import AgentRun, AgentRunStatus
 from aidp_server.audit import record_audit_event
 import subprocess
 
-
 class OwnerRuntimeProvider:
     provider_kind: str
 
@@ -14,7 +13,6 @@ class OwnerRuntimeProvider:
 
     def start_agent_run(self, session: Session, run: AgentRun) -> None:
         raise NotImplementedError()
-
 
 class CodexCliOwnerProvider(OwnerRuntimeProvider):
     provider_kind = "codex_cli"
@@ -43,15 +41,15 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     "task_side_effects_performed": False,
                     "worker_side_effects_performed": False,
                     "approval_side_effects_performed": False,
-                    "reason": "Real Codex CLI owner bridge disabled by config.",
-                },
+                    "reason": "Real Codex CLI owner bridge disabled by config."
+                }
             )
             return
 
         # Bridge Spike invocation
         now = datetime.now(timezone.utc)
         run.started_at = now
-
+        
         # We will attempt a safe capability check
         # We don't send the user's prompt. We just run `codex --version` or `--help`.
         cmd = [self.settings.codex_cli_command, "--version"]
@@ -87,7 +85,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
             metadata={
                 "provider_kind": self.provider_kind,
                 "bridge_spike": True,
-                "real_provider_execution": False,  # it's just a spike check
+                "real_provider_execution": False, # it's just a spike check
                 "tool_loop_executed": False,
                 "task_side_effects_performed": False,
                 "worker_side_effects_performed": False,
@@ -98,10 +96,9 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                 "exit_code": exit_code,
                 "stdout_excerpt": stdout_val,
                 "stderr_excerpt": stderr_val,
-                "timeout_seconds": 10,
-            },
+                "timeout_seconds": 10
+            }
         )
-
 
 class FakeOwnerProvider(OwnerRuntimeProvider):
     provider_kind = "fake"
@@ -111,7 +108,7 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
         run.status = AgentRunStatus.COMPLETED
         run.started_at = now
         run.completed_at = now
-
+        
         record_audit_event(
             session,
             event_type="owner_runtime.started",
@@ -119,9 +116,8 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
             local_user_id=run.local_user_id,
             agent_run_id=run.id,
             project_id=run.project_id,
-            metadata={"provider_kind": self.provider_kind},
+            metadata={"provider_kind": self.provider_kind}
         )
-
 
 def get_owner_provider(provider_kind: str, settings: Settings) -> OwnerRuntimeProvider:
     if provider_kind == "codex_cli":

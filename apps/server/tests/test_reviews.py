@@ -40,7 +40,9 @@ def test_review_prepare_approve_and_squash(app_harness: AppHarness, tmp_path: Pa
         == 200
     )
     assert app_harness.client.post(f"/task-attempts/{aid}/merge/prepare").status_code == 200
-    merged = app_harness.client.post(f"/task-attempts/{aid}/merge/squash", json={})
+    merged = app_harness.client.post(
+        f"/task-attempts/{aid}/merge/squash", json={}
+    )
     assert merged.status_code == 200
     sha = merged.json()["merge_commit_sha"]
     assert sha and sha != base

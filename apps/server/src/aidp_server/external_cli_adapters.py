@@ -7,10 +7,7 @@ from sqlalchemy.orm import Session
 
 from aidp_server.adapters.external_cli_contract import build_external_cli_context_package
 from aidp_server.adapters.external_cli_dry_run import execute_external_cli_dry_run
-from aidp_server.adapters.antigravity_cli import (
-    check_antigravity_cli_available,
-    execute_antigravity_cli_worker,
-)
+from aidp_server.adapters.antigravity_cli import check_antigravity_cli_available, execute_antigravity_cli_worker
 from aidp_server.auth import CurrentAuth
 from aidp_server.config import Settings, get_settings
 from aidp_server.db.models import GitWorktree, Task, TaskAttempt
@@ -30,9 +27,7 @@ class ExternalCliRunExperimentalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     adapter_kind: Literal["antigravity_cli"] = "antigravity_cli"
     worker_id: str
-    mode: Literal[
-        "controlled_readme_test", "controlled_scope_violation_test", "controlled_timeout_test"
-    ] = "controlled_readme_test"
+    mode: Literal["controlled_readme_test", "controlled_scope_violation_test", "controlled_timeout_test"] = "controlled_readme_test"
 
 
 class ExternalCliRunResult(BaseModel):

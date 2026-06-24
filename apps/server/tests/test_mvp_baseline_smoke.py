@@ -2,7 +2,6 @@ from conftest import AppHarness
 
 from test_worktrees import auth
 
-
 def test_tool_registry_seeded(app_harness: AppHarness) -> None:
     # Ensure tool registry is seeded during startup
     auth(app_harness)

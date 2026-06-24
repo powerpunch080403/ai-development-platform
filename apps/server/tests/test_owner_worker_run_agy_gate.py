@@ -233,18 +233,12 @@ def test_agy_worker_run_gate_enabled_without_helper(app_harness: AppHarness, mon
 
         class MockWorkerExecutionService:
             def run_task_attempt(self, *args, **kwargs):
-                raise NotImplementedError(
-                    "Owner-triggered AGY worker handoff is not implemented yet."
-                )
+                raise NotImplementedError("Owner-triggered AGY worker handoff is not implemented yet.")
 
         def mock_get_worker_execution_service(*args, **kwargs):
             return MockWorkerExecutionService()
 
-        monkeypatch.setattr(
-            aidp_server.worker_execution,
-            "get_worker_execution_service",
-            mock_get_worker_execution_service,
-        )
+        monkeypatch.setattr(aidp_server.worker_execution, "get_worker_execution_service", mock_get_worker_execution_service)
 
         bg_tasks = MockBackgroundTasks()
         result = execute_owner_tool(db_session, tool_call, background_tasks=bg_tasks)
@@ -311,11 +305,7 @@ def test_agy_worker_run_gate_enabled_with_helper(app_harness: AppHarness, monkey
     def mock_get_worker_execution_service(*args, **kwargs):
         return MockWorkerExecutionService()
 
-    monkeypatch.setattr(
-        aidp_server.worker_execution,
-        "get_worker_execution_service",
-        mock_get_worker_execution_service,
-    )
+    monkeypatch.setattr(aidp_server.worker_execution, "get_worker_execution_service", mock_get_worker_execution_service)
 
     with app_harness.session_factory() as db_session:
         user, agent_run, task, attempt, worker_run = setup_test_data(

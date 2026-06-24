@@ -69,19 +69,17 @@ def test_mock_worker_adapter_e2e(app_harness: AppHarness, tmp_path: Path) -> Non
     app_harness.client.post(
         f"/workers/{worker['id']}/claim", json={"task_attempt_id": attempt["id"]}
     ).json()
-
+    
     # Create worktree first
     worktree = app_harness.client.post(f"/task-attempts/{attempt['id']}/worktree").json()
-
+    
     # Run mock worker
     mock_run_response = app_harness.client.post(
         f"/task-attempts/{attempt['id']}/run-mock-worker",
-        json={"commit_message": "chore: mock worker append"},
+        json={"commit_message": "chore: mock worker append"}
     ).json()
-
-    assert mock_run_response["status"] == "success", (
-        f"{mock_run_response['status']} - {mock_run_response.get('worker_run', {}).get('error_message')}"
-    )
+    
+    assert mock_run_response["status"] == "success", f"{mock_run_response['status']} - {mock_run_response.get('worker_run', {}).get('error_message')}"
     worker_run = mock_run_response["worker_run"]
     assert worker_run["status"] == "succeeded"
     assert worker_run["adapter_kind"] == "mock"
@@ -116,22 +114,22 @@ def test_mock_worker_adapter_e2e(app_harness: AppHarness, tmp_path: Path) -> Non
         json={"review_comment": "LGTM"},
     )
     app_harness.client.post(f"/task-attempts/{attempt['id']}/merge/prepare")
-    app_harness.client.post(f"/task-attempts/{attempt['id']}/merge/squash", json={}).json()
+    app_harness.client.post(
+        f"/task-attempts/{attempt['id']}/merge/squash",
+        json={}
+    ).json()
     # Verify source repository HEAD is now updated
     merged_sha = git(source, "rev-parse", "HEAD").stdout.strip()
     assert merged_sha != base_sha
-
+    
     # 6. Verify run-mock-worker does not change the implementation repository either
     implementation_head_after = git(implementation_repo, "rev-parse", "HEAD").stdout.strip()
     assert implementation_head_before == implementation_head_after
 
-    assert "This line was added by the mock worker." in (source / "README.md").read_text(
-        encoding="utf-8"
-    )
-
+    assert "This line was added by the mock worker." in (source / "README.md").read_text(encoding="utf-8")
+    
     implementation_head_after = git(implementation_repo, "rev-parse", "HEAD").stdout.strip()
     assert implementation_head_after == implementation_head_before
-
 
 def test_mock_worker_path_traversal(app_harness: AppHarness, tmp_path: Path) -> None:
     source = tmp_path / "mock-worker-repo-2"
@@ -168,15 +166,13 @@ def test_mock_worker_path_traversal(app_harness: AppHarness, tmp_path: Path) -> 
         f"/workers/{worker['id']}/claim", json={"task_attempt_id": attempt["id"]}
     )
     app_harness.client.post(f"/task-attempts/{attempt['id']}/worktree").json()
-
+    
     mock_run_response = app_harness.client.post(
-        f"/task-attempts/{attempt['id']}/run-mock-worker", json={}
+        f"/task-attempts/{attempt['id']}/run-mock-worker",
+        json={}
     ).json()
-
+    
     assert mock_run_response["status"] == "failed"
-    assert (
-        app_harness.client.get(f"/task-attempts/{attempt['id']}").json()["status"]
-        == "worker_failed"
-    )
+    assert app_harness.client.get(f"/task-attempts/{attempt['id']}").json()["status"] == "worker_failed"
     artifacts = app_harness.client.get(f"/task-attempts/{attempt['id']}/artifacts").json()
     assert any(a["kind"] == "error_log" for a in artifacts)

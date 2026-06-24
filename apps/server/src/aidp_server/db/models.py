@@ -981,7 +981,9 @@ class PolicyDecision(TimestampMixin, Base):
 
 class Grant(TimestampMixin, Base):
     __tablename__ = "grants"
-    __table_args__ = (Index("ix_grants_local_user_id", "local_user_id"),)
+    __table_args__ = (
+        Index("ix_grants_local_user_id", "local_user_id"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     local_user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id"), nullable=False)
     approval_mode: Mapped[ApprovalMode] = mapped_column(
@@ -1012,50 +1014,40 @@ class ProcessRun(TimestampMixin, Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     local_user_id: Mapped[str | None] = mapped_column(ForeignKey("local_users.id"), nullable=True)
     project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
-    repository_id: Mapped[str | None] = mapped_column(
-        ForeignKey("project_repositories.id"), nullable=True
-    )
+    repository_id: Mapped[str | None] = mapped_column(ForeignKey("project_repositories.id"), nullable=True)
     task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
-    task_attempt_id: Mapped[str | None] = mapped_column(
-        ForeignKey("task_attempts.id"), nullable=True
-    )
+    task_attempt_id: Mapped[str | None] = mapped_column(ForeignKey("task_attempts.id"), nullable=True)
     worker_id: Mapped[str | None] = mapped_column(ForeignKey("workers.id"), nullable=True)
     worker_run_id: Mapped[str | None] = mapped_column(ForeignKey("worker_runs.id"), nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(ForeignKey("tool_calls.id"), nullable=True)
-
+    
     command_display: Mapped[str] = mapped_column(Text, nullable=False)
     executable: Mapped[str] = mapped_column(Text, nullable=False)
     arguments_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     working_directory: Mapped[str] = mapped_column(Text, nullable=False)
-
+    
     status: Mapped[ProcessRunStatus] = mapped_column(
         enum_column(ProcessRunStatus), nullable=False, default=ProcessRunStatus.CREATED
     )
-
+    
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-
+    
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     timed_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
+    
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-    stdout_artifact_id: Mapped[str | None] = mapped_column(
-        ForeignKey("artifact_refs.id"), nullable=True
-    )
-    stderr_artifact_id: Mapped[str | None] = mapped_column(
-        ForeignKey("artifact_refs.id"), nullable=True
-    )
-    combined_log_artifact_id: Mapped[str | None] = mapped_column(
-        ForeignKey("artifact_refs.id"), nullable=True
-    )
-
+    
+    stdout_artifact_id: Mapped[str | None] = mapped_column(ForeignKey("artifact_refs.id"), nullable=True)
+    stderr_artifact_id: Mapped[str | None] = mapped_column(ForeignKey("artifact_refs.id"), nullable=True)
+    combined_log_artifact_id: Mapped[str | None] = mapped_column(ForeignKey("artifact_refs.id"), nullable=True)
+    
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-
+    
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )

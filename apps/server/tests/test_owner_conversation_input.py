@@ -61,9 +61,5 @@ def test_keyword_routing_is_prohibited_and_does_not_create_task_or_worker_run(
         tasks = session.scalars(select(Task).where(Task.project_id == project_id)).all()
         assert len(tasks) == 0, "Tasks should not be created automatically by keyword messages"
 
-        worker_runs = session.scalars(
-            select(WorkerRun).where(WorkerRun.project_id == project_id)
-        ).all()
-        assert len(worker_runs) == 0, (
-            "WorkerRuns should not be created automatically by keyword messages"
-        )
+        worker_runs = session.scalars(select(WorkerRun).where(WorkerRun.project_id == project_id)).all()
+        assert len(worker_runs) == 0, "WorkerRuns should not be created automatically by keyword messages"

@@ -14,7 +14,6 @@ from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDe
 
 router = APIRouter(tags=["Process Runs"])
 
-
 class ProcessRunView(BaseModel):
     id: str
     local_user_id: str | None
@@ -71,7 +70,7 @@ def list_process_runs_for_attempt(
     attempt = session.get(TaskAttempt, task_attempt_id)
     if not attempt or attempt.local_user_id != current.user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Task attempt not found")
-
+        
     runs = session.scalars(
         select(ProcessRun)
         .where(ProcessRun.task_attempt_id == task_attempt_id)
@@ -85,9 +84,7 @@ class TestCommandRequest(BaseModel):
     pass
 
 
-@router.post(
-    "/task-attempts/{task_attempt_id}/process-runs/test-command", response_model=ProcessRunView
-)
+@router.post("/task-attempts/{task_attempt_id}/process-runs/test-command", response_model=ProcessRunView)
 async def run_test_command(
     task_attempt_id: str,
     request: TestCommandRequest,
@@ -106,15 +103,12 @@ async def run_test_command(
     # Determine safe working directory context
     # Use the repository path for baseline validation test
     from aidp_server.db.models import ProjectRepository
-
     repo = None
     if attempt.repository_id:
         repo = session.get(ProjectRepository, attempt.repository_id)
-
+        
     if not repo or not repo.repository_path:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "No repository associated with this attempt"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No repository associated with this attempt")
 
     wd = repo.repository_path
     executable = sys.executable
@@ -124,13 +118,9 @@ async def run_test_command(
     if pd == PolicyDecisionResult.DENY:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Policy denied process_run.create")
     create_policy_decision(
-        session,
-        current.user.id,
-        "process_run.create",
-        project_id=attempt.project_id,
-        repository_id=attempt.repository_id,
-        task_id=attempt.task_id,
-        task_attempt_id=attempt.id,
+        session, current.user.id, "process_run.create",
+        project_id=attempt.project_id, repository_id=attempt.repository_id,
+        task_id=attempt.task_id, task_attempt_id=attempt.id
     )
 
     run_record = await execute_process_async(
@@ -147,8 +137,8 @@ async def run_test_command(
         task_attempt_id=attempt.id,
         worker_id=attempt.worker_id,
     )
-
+    
     session.commit()
     session.refresh(run_record)
-
+    
     return run_record

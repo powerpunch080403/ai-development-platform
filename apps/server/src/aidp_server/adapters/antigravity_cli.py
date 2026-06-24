@@ -1,6 +1,6 @@
 import json
 import shutil
-
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -176,7 +176,6 @@ async def run_existing_agy_worker_run(
     )
 
     from aidp_server.process_runtime import get_process_runtime_provider
-
     provider = get_process_runtime_provider()
 
     process_run = await provider.run(
@@ -202,48 +201,42 @@ async def run_existing_agy_worker_run(
     if process_run.status is ProcessRunStatus.SUCCEEDED:
         # Check if the worktree is dirty
         wt_path = Path(worktree.worktree_path)
-        from aidp_server.git_commands import get_git_command_service, GitCommandError
-
-        git_service = get_git_command_service()
-        try:
-            status_out = git_service.status_porcelain(wt_path)
-            if status_out.strip():
-                files_modified = True
-                try:
-                    apply_worktree_result(
-                        session,
-                        settings,
-                        worktree,
-                        "Antigravity CLI experimental result",
-                        worker_run.local_user_id,
-                        "Worker execution applied",
-                    )
-                    result_commit_created = True
-                    worker_run.status = RecordStatus.SUCCEEDED
-                    worker_run.summary = "Antigravity CLI completed and produced a result commit."
-                    worker_run.completed_at = utc_now()
-                except Exception as e:
-                    # E.g. write scope violation
-                    worker_run.status = RecordStatus.FAILED
-                    worker_run.summary = (
-                        f"Antigravity CLI completed but failed to apply result: {e}"
-                    )
-                    worker_run.error_code = (
-                        "WRITE_SCOPE_VIOLATION" if "scope" in str(e).lower() else "APPLY_ERROR"
-                    )
-                    worker_run.error_message = str(e)
-                    worker_run.failed_at = utc_now()
-            else:
-                # No files modified
+        # TODO(GitCommandService): Replace this raw subprocess call with a GitCommandService boundary.
+        status_res = subprocess.run(
+            ["git", "-C", str(wt_path), "status", "--porcelain"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if status_res.returncode == 0 and status_res.stdout.strip():
+            files_modified = True
+            try:
+                apply_worktree_result(
+                    session,
+                    settings,
+                    worktree,
+                    "Antigravity CLI experimental result",
+                    worker_run.local_user_id,
+                    "Worker execution applied",
+                )
+                result_commit_created = True
                 worker_run.status = RecordStatus.SUCCEEDED
-                worker_run.summary = "Antigravity CLI completed without file changes."
+                worker_run.summary = "Antigravity CLI completed and produced a result commit."
                 worker_run.completed_at = utc_now()
-        except GitCommandError as e:
-            worker_run.status = RecordStatus.FAILED
-            worker_run.summary = "Antigravity CLI completed but git status check failed."
-            worker_run.error_code = "GIT_COMMAND_ERROR"
-            worker_run.error_message = str(e)
-            worker_run.failed_at = utc_now()
+            except Exception as e:
+                # E.g. write scope violation
+                worker_run.status = RecordStatus.FAILED
+                worker_run.summary = f"Antigravity CLI completed but failed to apply result: {e}"
+                worker_run.error_code = (
+                    "WRITE_SCOPE_VIOLATION" if "scope" in str(e).lower() else "APPLY_ERROR"
+                )
+                worker_run.error_message = str(e)
+                worker_run.failed_at = utc_now()
+        else:
+            # No files modified
+            worker_run.status = RecordStatus.SUCCEEDED
+            worker_run.summary = "Antigravity CLI completed without file changes."
+            worker_run.completed_at = utc_now()
     else:
         worker_run.status = RecordStatus.FAILED
         worker_run.summary = "Antigravity CLI execution failed."

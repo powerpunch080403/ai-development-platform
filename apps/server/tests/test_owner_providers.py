@@ -26,13 +26,14 @@ def test_start_queued_agent_run_invokes_fake_provider(app_harness: AppHarness) -
 
     # Start AgentRun with fake provider
     start_resp = app_harness.client.post(
-        f"/agent-runs/{run_id}/start", json={"provider_kind": "fake"}
+        f"/agent-runs/{run_id}/start",
+        json={"provider_kind": "fake"}
     )
     assert start_resp.status_code == 200
-
+    
     # Verify status transition
     assert start_resp.json()["status"] == "completed"
-
+    
     # Verify DB state
     with app_harness.session_factory() as session:
         run = session.get(AgentRun, run_id)
@@ -60,7 +61,8 @@ def test_fake_provider_rejected_by_default(app_harness: AppHarness) -> None:
     run_id = run_resp.json()["id"]
 
     start_resp = app_harness.client.post(
-        f"/agent-runs/{run_id}/start", json={"provider_kind": "fake"}
+        f"/agent-runs/{run_id}/start",
+        json={"provider_kind": "fake"}
     )
     assert start_resp.status_code == 403
     assert start_resp.json()["detail"] == "Fake owner provider is not allowed"
@@ -83,7 +85,8 @@ def test_unknown_provider_rejected(app_harness: AppHarness) -> None:
     run_id = run_resp.json()["id"]
 
     start_resp = app_harness.client.post(
-        f"/agent-runs/{run_id}/start", json={"provider_kind": "unknown_provider"}
+        f"/agent-runs/{run_id}/start",
+        json={"provider_kind": "unknown_provider"}
     )
     assert start_resp.status_code == 400
     assert "Unknown owner provider kind" in start_resp.json()["detail"]
@@ -108,18 +111,17 @@ def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
     # Start with default provider
     start_resp = app_harness.client.post(
         f"/agent-runs/{run_id}/start",
-        json={},  # should default to codex_cli
+        json={}  # should default to codex_cli
     )
     assert start_resp.status_code == 200
     assert start_resp.json()["status"] == "completed"
 
     with app_harness.session_factory() as session:
         from aidp_server.db.models import AuditEvent
-
         audit = session.scalar(
             select(AuditEvent).where(
                 AuditEvent.event_type == "owner_runtime.skeleton_invoked",
-                AuditEvent.agent_run_id == run_id,
+                AuditEvent.agent_run_id == run_id
             )
         )
         assert audit is not None
@@ -151,18 +153,18 @@ def test_codex_cli_provider_bridge_spike_safe_invocation(app_harness: AppHarness
     run_id = run_resp.json()["id"]
 
     start_resp = app_harness.client.post(
-        f"/agent-runs/{run_id}/start", json={"provider_kind": "codex_cli"}
+        f"/agent-runs/{run_id}/start",
+        json={"provider_kind": "codex_cli"}
     )
     assert start_resp.status_code == 200
     assert start_resp.json()["status"] == "completed"
 
     with app_harness.session_factory() as session:
         from aidp_server.db.models import AuditEvent
-
         audit = session.scalar(
             select(AuditEvent).where(
                 AuditEvent.event_type == "owner_runtime.bridge_spike_invoked",
-                AuditEvent.agent_run_id == run_id,
+                AuditEvent.agent_run_id == run_id
             )
         )
         assert audit is not None
@@ -210,7 +212,8 @@ def test_keyword_routing_is_prohibited_during_start(
 
         # Start AgentRun
         start_resp = app_harness.client.post(
-            f"/agent-runs/{run_id}/start", json={"provider_kind": "fake"}
+            f"/agent-runs/{run_id}/start",
+            json={"provider_kind": "fake"}
         )
         assert start_resp.status_code == 200
 
@@ -219,12 +222,8 @@ def test_keyword_routing_is_prohibited_during_start(
         tasks = session.scalars(select(Task).where(Task.project_id == project_id)).all()
         assert len(tasks) == 0
 
-        worker_runs = session.scalars(
-            select(WorkerRun).where(WorkerRun.project_id == project_id)
-        ).all()
+        worker_runs = session.scalars(select(WorkerRun).where(WorkerRun.project_id == project_id)).all()
         assert len(worker_runs) == 0
-
-        approvals = session.scalars(
-            select(ApprovalRequest).where(ApprovalRequest.project_id == project_id)
-        ).all()
+        
+        approvals = session.scalars(select(ApprovalRequest).where(ApprovalRequest.project_id == project_id)).all()
         assert len(approvals) == 0
