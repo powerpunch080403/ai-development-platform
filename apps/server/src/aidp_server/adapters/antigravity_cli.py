@@ -25,7 +25,6 @@ from aidp_server.db.models import (
     Grant,
     utc_now,
 )
-from aidp_server.process_runner import execute_process_async
 from aidp_server.policy import create_policy_decision, evaluate_action, PolicyDecisionResult
 from aidp_server.worktrees import apply_worktree_result
 from aidp_server.adapters.external_cli_runs import assert_no_active_external_cli_worker_run
@@ -176,7 +175,10 @@ async def run_existing_agy_worker_run(
         allow_dangerous_skip_permissions=allow_danger,
     )
 
-    process_run = await execute_process_async(
+    from aidp_server.process_runtime import get_process_runtime_provider
+    provider = get_process_runtime_provider()
+
+    process_run = await provider.run(
         session=session,
         settings=settings,
         executable=cli_path,
@@ -199,6 +201,7 @@ async def run_existing_agy_worker_run(
     if process_run.status is ProcessRunStatus.SUCCEEDED:
         # Check if the worktree is dirty
         wt_path = Path(worktree.worktree_path)
+        # TODO(GitCommandService): Replace this raw subprocess call with a GitCommandService boundary.
         status_res = subprocess.run(
             ["git", "-C", str(wt_path), "status", "--porcelain"],
             check=False,
