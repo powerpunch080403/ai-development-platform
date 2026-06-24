@@ -86,6 +86,6 @@ def test_antigravity_cli_process_failure_fails_attempt(
         assert worker_run.error_message == "NotImplementedError()"
 
         attempt = session.get(TaskAttempt, attempt_id)
-        assert attempt.status == TaskAttemptStatus.FAILED
+        assert attempt.status == TaskAttemptStatus.WORKER_FAILED
         assert attempt.error_code == "EXECUTION_ERROR"
         assert attempt.error_message == "NotImplementedError()"

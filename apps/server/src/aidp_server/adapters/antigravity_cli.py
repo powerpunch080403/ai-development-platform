@@ -281,23 +281,36 @@ async def run_existing_agy_worker_run(
                     worker_run.summary = "Antigravity CLI completed and produced a result commit."
                     worker_run.completed_at = utc_now()
                 except Exception as e:
-                    worker_run.status = RecordStatus.FAILED
-                    worker_run.summary = f"Antigravity CLI completed but failed to apply result: {e}"
-                    worker_run.error_code = (
+                    error_code = (
                         "WRITE_SCOPE_VIOLATION" if "scope" in str(e).lower() else "APPLY_ERROR"
                     )
-                    worker_run.error_message = str(e)
-                    worker_run.failed_at = utc_now()
+                    error_message = str(e)
+                    failed_at = utc_now()
+                    worker_run.status = RecordStatus.FAILED
+                    worker_run.summary = f"Antigravity CLI completed but failed to apply result: {e}"
+                    worker_run.error_code = error_code
+                    worker_run.error_message = error_message
+                    worker_run.failed_at = failed_at
+                    attempt.status = TaskAttemptStatus.WORKER_FAILED
+                    attempt.error_code = error_code
+                    attempt.error_message = error_message
+                    attempt.failed_at = failed_at
             else:
                 worker_run.status = RecordStatus.SUCCEEDED
                 worker_run.summary = "Antigravity CLI completed without file changes."
                 worker_run.completed_at = utc_now()
         except GitCommandError as e:
+            error_message = str(e)
+            failed_at = utc_now()
             worker_run.status = RecordStatus.FAILED
             worker_run.summary = "Antigravity CLI completed but git status check failed."
             worker_run.error_code = "GIT_COMMAND_ERROR"
-            worker_run.error_message = str(e)
-            worker_run.failed_at = utc_now()
+            worker_run.error_message = error_message
+            worker_run.failed_at = failed_at
+            attempt.status = TaskAttemptStatus.WORKER_FAILED
+            attempt.error_code = "GIT_COMMAND_ERROR"
+            attempt.error_message = error_message
+            attempt.failed_at = failed_at
     else:
         error_code = process_run.error_code or process_run.status.value
         error_message = process_run.error_message or error_code
@@ -305,11 +318,11 @@ async def run_existing_agy_worker_run(
         worker_run.summary = "Antigravity CLI execution failed."
         worker_run.error_code = error_code
         worker_run.error_message = error_message
-        worker_run.failed_at = utc_now()
-        attempt.status = TaskAttemptStatus.FAILED
+        failed_at = worker_run.failed_at
+        attempt.status = TaskAttemptStatus.WORKER_FAILED
         attempt.error_code = error_code
         attempt.error_message = error_message
-        attempt.failed_at = utc_now()
+        attempt.failed_at = failed_at
 
     report = {
         "adapter_kind": "antigravity_cli",
