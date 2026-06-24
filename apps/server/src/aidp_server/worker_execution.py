@@ -179,7 +179,7 @@ def _mark_worker_run_failed(session: Session, worker_run_id: str, error_message:
 
     attempt = session.get(TaskAttempt, worker_run.task_attempt_id)
     if attempt:
-        attempt.status = TaskAttemptStatus.FAILED
+        attempt.status = TaskAttemptStatus.WORKER_FAILED
         attempt.error_message = error_message
         attempt.failed_at = utc_now()
 

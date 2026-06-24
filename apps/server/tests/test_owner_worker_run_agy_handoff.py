@@ -221,7 +221,7 @@ async def test_background_agy_runner_handles_exception(app_harness: AppHarness, 
         assert worker_run.error_message == "Mock failure in agy handoff"
 
         attempt = db_session.get(TaskAttempt, worker_run.task_attempt_id)
-        assert attempt.status == TaskAttemptStatus.FAILED
+        assert attempt.status == TaskAttemptStatus.WORKER_FAILED
 
 
 @pytest.mark.anyio
@@ -252,4 +252,4 @@ async def test_background_agy_runner_handles_empty_exception_message(app_harness
         assert worker_run.error_message
 
         attempt = db_session.get(TaskAttempt, worker_run.task_attempt_id)
-        assert attempt.status == TaskAttemptStatus.FAILED
+        assert attempt.status == TaskAttemptStatus.WORKER_FAILED
