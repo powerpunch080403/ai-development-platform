@@ -36,6 +36,7 @@ ALLOWED_OWNER_TOOLS = {
     "attempt.follow_up",
     "worker.start_task_attempt",
     "worker.run_task_attempt",
+    "worker.drain_queue",
 }
 READ_ONLY_OWNER_TOOLS = {"project.list", "task.list"}
 
@@ -192,6 +193,49 @@ def _active_worker_run_for_worker(session: Session, worker_run: WorkerRun) -> Wo
     ).first()
 
 
+def _active_worker_run_for_worker_id(session: Session, worker_id: str) -> WorkerRun | None:
+    return session.scalars(
+        select(WorkerRun)
+        .where(WorkerRun.worker_id == worker_id)
+        .where(WorkerRun.status == RecordStatus.RUNNING)
+        .order_by(WorkerRun.created_at.asc())
+    ).first()
+
+
+def _task_has_active_worker_run(
+    session: Session, *, task_id: str, excluding_worker_run_id: str
+) -> bool:
+    active = session.scalars(
+        select(WorkerRun.id)
+        .where(WorkerRun.task_id == task_id)
+        .where(WorkerRun.id != excluding_worker_run_id)
+        .where(WorkerRun.status == RecordStatus.RUNNING)
+        .limit(1)
+    ).first()
+    return active is not None
+
+
+def _next_created_worker_run_for_worker(session: Session, worker: Worker) -> WorkerRun | None:
+    candidates = session.scalars(
+        select(WorkerRun)
+        .where(WorkerRun.worker_id == worker.id)
+        .where(WorkerRun.status == RecordStatus.CREATED)
+        .order_by(WorkerRun.created_at.asc())
+    ).all()
+    for candidate in candidates:
+        attempt = session.get(TaskAttempt, candidate.task_attempt_id)
+        if attempt is None or attempt.status is not TaskAttemptStatus.CREATED:
+            continue
+        if _task_has_active_worker_run(
+            session,
+            task_id=candidate.task_id,
+            excluding_worker_run_id=candidate.id,
+        ):
+            continue
+        return candidate
+    return None
+
+
 def _queue_due_to_worker_capacity(
     session: Session,
     tool_call: ToolCall,
@@ -224,6 +268,186 @@ def _queue_due_to_worker_capacity(
         "active_worker_run_id": active_worker_run.id,
         "worker_capacity": 1,
     }
+
+
+def _run_worker_run(
+    session: Session,
+    tool_call: ToolCall,
+    *,
+    worker_run: WorkerRun,
+    attempt: TaskAttempt,
+    background_tasks: BackgroundTasks | None,
+) -> dict[str, Any]:
+    if worker_run.adapter_kind not in {"mock", "agy"}:
+        return _fail(
+            tool_call,
+            "unsupported_worker_adapter",
+            f"Unsupported worker adapter: {worker_run.adapter_kind}",
+        )
+
+    active_worker_run = _active_worker_run_for_worker(session, worker_run)
+    if active_worker_run is not None:
+        return _queue_due_to_worker_capacity(
+            session,
+            tool_call,
+            worker_run=worker_run,
+            attempt=attempt,
+            active_worker_run=active_worker_run,
+        )
+
+    from aidp_server.config import get_settings
+    from aidp_server.db.models import utc_now
+
+    settings = get_settings()
+    if worker_run.adapter_kind == "agy":
+        if not settings.allow_owner_agy_worker_run:
+            record_audit_event(
+                session,
+                event_type="owner_tool_call.rejected",
+                message="worker.run_task_attempt rejected (AGY disabled)",
+                local_user_id=tool_call.user_id,
+                project_id=attempt.project_id,
+                agent_run_id=tool_call.agent_run_id,
+                tool_call_id=tool_call.id,
+                metadata={"adapter": "agy", "gate": "disabled"},
+            )
+            return _fail(
+                tool_call,
+                "agy_worker_disabled",
+                "Owner-triggered AGY worker execution is disabled by local configuration.",
+            )
+
+        if not background_tasks:
+            raise RuntimeError("background_tasks is required for AGY handoff")
+        task = session.get(Task, attempt.task_id)
+        from aidp_server.worker_execution import get_worker_execution_service
+        from aidp_server.worktrees import ensure_worktree
+
+        ensure_worktree(session, settings, attempt.id, tool_call.user_id)
+        handoff_result = get_worker_execution_service(background_tasks).run_task_attempt(
+            session=session,
+            worker_run=worker_run,
+            task_attempt=attempt,
+            task=task,
+            tool_call=tool_call,
+            settings=settings,
+        )
+        worker_run.status = RecordStatus.RUNNING
+        attempt.status = TaskAttemptStatus.RUNNING_WORKER
+        session.flush()
+        record_audit_event(
+            session,
+            event_type="owner_tool_call.completed",
+            message="worker.run_task_attempt completed (AGY handoff)",
+            local_user_id=tool_call.user_id,
+            project_id=attempt.project_id,
+            agent_run_id=tool_call.agent_run_id,
+            tool_call_id=tool_call.id,
+            metadata={
+                "task_attempt_id": attempt.id,
+                "worker_run_id": worker_run.id,
+                "adapter": "agy",
+                "fresh_worker_context": True,
+                "previous_worker_context_reused": False,
+            },
+        )
+        return handoff_result
+
+    now = utc_now()
+    worker_run.status = RecordStatus.SUCCEEDED
+    worker_run.completed_at = now
+    worker_run.summary = "Mock execution completed by owner tool"
+    attempt.status = TaskAttemptStatus.ACCEPTED
+    attempt.completed_at = now
+    attempt.result_summary = "Mock execution completed by owner tool"
+    session.flush()
+    record_audit_event(
+        session,
+        event_type="owner_tool_call.completed",
+        message="worker.run_task_attempt completed",
+        local_user_id=tool_call.user_id,
+        project_id=attempt.project_id,
+        agent_run_id=tool_call.agent_run_id,
+        tool_call_id=tool_call.id,
+        metadata={
+            "task_attempt_id": attempt.id,
+            "worker_run_id": worker_run.id,
+            "fresh_worker_context": True,
+            "previous_worker_context_reused": False,
+        },
+    )
+    return {
+        "task_attempt_id": attempt.id,
+        "worker_run_id": worker_run.id,
+        "status": "succeeded",
+        "adapter": "mock",
+        "fresh_worker_context": True,
+        "previous_worker_context_reused": False,
+    }
+
+
+def drain_next_worker_run(
+    session: Session,
+    tool_call: ToolCall,
+    *,
+    worker: Worker,
+    background_tasks: BackgroundTasks | None,
+) -> dict[str, Any]:
+    active_worker_run = _active_worker_run_for_worker_id(session, worker.id)
+    if active_worker_run is not None:
+        return {
+            "worker_id": worker.id,
+            "status": "queued",
+            "reason": "worker_capacity_full",
+            "active_worker_run_id": active_worker_run.id,
+            "worker_capacity": 1,
+        }
+
+    worker_run = _next_created_worker_run_for_worker(session, worker)
+    if worker_run is None:
+        return {
+            "worker_id": worker.id,
+            "status": "idle",
+            "reason": "no_queued_worker_runs",
+            "worker_capacity": 1,
+        }
+
+    attempt = session.get(TaskAttempt, worker_run.task_attempt_id)
+    if attempt is None:
+        return _fail(tool_call, "task_attempt_not_found", "TaskAttempt not found")
+
+    record_audit_event(
+        session,
+        event_type="worker_queue.drain_selected",
+        message="Selected next queued WorkerRun for execution",
+        local_user_id=tool_call.user_id,
+        project_id=attempt.project_id,
+        agent_run_id=tool_call.agent_run_id,
+        tool_call_id=tool_call.id,
+        metadata={
+            "worker_id": worker.id,
+            "worker_run_id": worker_run.id,
+            "task_attempt_id": attempt.id,
+        },
+    )
+    return _run_worker_run(
+        session,
+        tool_call,
+        worker_run=worker_run,
+        attempt=attempt,
+        background_tasks=background_tasks,
+    )
+
+
+def _worker_for_drain(session: Session, tool_call: ToolCall, args: dict[str, Any]) -> Worker | None:
+    worker_id = args.get("worker_id")
+    if worker_id:
+        worker = session.get(Worker, worker_id)
+        if worker is None or worker.local_user_id != tool_call.user_id:
+            return None
+        return worker
+    worker_adapter = args.get("worker_adapter", "mock")
+    return _system_worker(session, tool_call.user_id, worker_adapter)
 
 
 def execute_owner_tool(
@@ -356,6 +580,18 @@ def execute_owner_tool(
             "existing_attempt": bool(attempt_id),
         }
 
+    if tool_call.tool_name == "worker.drain_queue":
+        args = tool_call.arguments_json or {}
+        worker = _worker_for_drain(session, tool_call, args)
+        if worker is None:
+            return _fail(tool_call, "worker_not_found", "Worker not found or access denied")
+        return drain_next_worker_run(
+            session,
+            tool_call,
+            worker=worker,
+            background_tasks=background_tasks,
+        )
+
     if tool_call.tool_name == "worker.run_task_attempt":
         args = tool_call.arguments_json or {}
         worker_run_id = args.get("worker_run_id")
@@ -386,112 +622,13 @@ def execute_owner_tool(
             return _fail(tool_call, "worker_run_not_found", "WorkerRun not found")
         if not attempt:
             return _fail(tool_call, "task_attempt_not_found", "TaskAttempt not found")
-        if worker_run.adapter_kind not in {"mock", "agy"}:
-            return _fail(
-                tool_call,
-                "unsupported_worker_adapter",
-                f"Unsupported worker adapter: {worker_run.adapter_kind}",
-            )
-
-        active_worker_run = _active_worker_run_for_worker(session, worker_run)
-        if active_worker_run is not None:
-            return _queue_due_to_worker_capacity(
-                session,
-                tool_call,
-                worker_run=worker_run,
-                attempt=attempt,
-                active_worker_run=active_worker_run,
-            )
-
-        from aidp_server.config import get_settings
-        from aidp_server.db.models import utc_now
-
-        settings = get_settings()
-        if worker_run.adapter_kind == "agy":
-            if not settings.allow_owner_agy_worker_run:
-                record_audit_event(
-                    session,
-                    event_type="owner_tool_call.rejected",
-                    message="worker.run_task_attempt rejected (AGY disabled)",
-                    local_user_id=tool_call.user_id,
-                    project_id=attempt.project_id,
-                    agent_run_id=tool_call.agent_run_id,
-                    tool_call_id=tool_call.id,
-                    metadata={"adapter": "agy", "gate": "disabled"},
-                )
-                return _fail(
-                    tool_call,
-                    "agy_worker_disabled",
-                    "Owner-triggered AGY worker execution is disabled by local configuration.",
-                )
-
-            if not background_tasks:
-                raise RuntimeError("background_tasks is required for AGY handoff")
-            task = session.get(Task, attempt.task_id)
-            from aidp_server.worker_execution import get_worker_execution_service
-            from aidp_server.worktrees import ensure_worktree
-
-            ensure_worktree(session, settings, attempt.id, tool_call.user_id)
-            handoff_result = get_worker_execution_service(background_tasks).run_task_attempt(
-                session=session,
-                worker_run=worker_run,
-                task_attempt=attempt,
-                task=task,
-                tool_call=tool_call,
-                settings=settings,
-            )
-            worker_run.status = RecordStatus.RUNNING
-            attempt.status = TaskAttemptStatus.RUNNING_WORKER
-            session.flush()
-            record_audit_event(
-                session,
-                event_type="owner_tool_call.completed",
-                message="worker.run_task_attempt completed (AGY handoff)",
-                local_user_id=tool_call.user_id,
-                project_id=attempt.project_id,
-                agent_run_id=tool_call.agent_run_id,
-                tool_call_id=tool_call.id,
-                metadata={
-                    "task_attempt_id": attempt.id,
-                    "worker_run_id": worker_run.id,
-                    "adapter": "agy",
-                    "fresh_worker_context": True,
-                    "previous_worker_context_reused": False,
-                },
-            )
-            return handoff_result
-
-        now = utc_now()
-        worker_run.status = RecordStatus.SUCCEEDED
-        worker_run.completed_at = now
-        worker_run.summary = "Mock execution completed by owner tool"
-        attempt.status = TaskAttemptStatus.ACCEPTED
-        attempt.completed_at = now
-        attempt.result_summary = "Mock execution completed by owner tool"
-        session.flush()
-        record_audit_event(
+        return _run_worker_run(
             session,
-            event_type="owner_tool_call.completed",
-            message="worker.run_task_attempt completed",
-            local_user_id=tool_call.user_id,
-            project_id=attempt.project_id,
-            agent_run_id=tool_call.agent_run_id,
-            tool_call_id=tool_call.id,
-            metadata={
-                "task_attempt_id": attempt.id,
-                "worker_run_id": worker_run.id,
-                "fresh_worker_context": True,
-                "previous_worker_context_reused": False,
-            },
+            tool_call,
+            worker_run=worker_run,
+            attempt=attempt,
+            background_tasks=background_tasks,
         )
-        return {
-            "task_attempt_id": attempt.id,
-            "worker_run_id": worker_run.id,
-            "status": "succeeded",
-            "adapter": "mock",
-            "fresh_worker_context": True,
-            "previous_worker_context_reused": False,
-        }
 
     raise ValueError(f"Unsupported tool: {tool_call.tool_name}")
 
