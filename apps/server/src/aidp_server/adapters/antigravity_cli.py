@@ -21,6 +21,7 @@ from aidp_server.db.models import (
     RecordStatus,
     Task,
     TaskAttempt,
+    TaskAttemptStatus,
     WorkerRun,
     Grant,
     utc_now,
@@ -245,11 +246,17 @@ async def run_existing_agy_worker_run(
             worker_run.error_message = str(e)
             worker_run.failed_at = utc_now()
     else:
+        error_code = process_run.error_code or process_run.status.value
+        error_message = process_run.error_message or error_code
         worker_run.status = RecordStatus.FAILED
         worker_run.summary = "Antigravity CLI execution failed."
-        worker_run.error_code = process_run.error_code or process_run.status.value
-        worker_run.error_message = process_run.error_message
+        worker_run.error_code = error_code
+        worker_run.error_message = error_message
         worker_run.failed_at = utc_now()
+        attempt.status = TaskAttemptStatus.FAILED
+        attempt.error_code = error_code
+        attempt.error_message = error_message
+        attempt.failed_at = utc_now()
 
     report = {
         "adapter_kind": "antigravity_cli",
