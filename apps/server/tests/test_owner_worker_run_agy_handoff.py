@@ -224,3 +224,34 @@ async def test_background_agy_runner_handles_exception(app_harness: AppHarness, 
 
         attempt = db_session.get(TaskAttempt, worker_run.task_attempt_id)
         assert attempt.status == TaskAttemptStatus.FAILED
+
+
+@pytest.mark.anyio
+async def test_background_agy_runner_handles_empty_exception_message(app_harness: AppHarness, monkeypatch):
+    from test_conversations_and_tools import authenticate, create_project
+
+    authenticate(app_harness)
+    project_id = create_project(app_harness)
+
+    with app_harness.session_factory() as db_session:
+        user, agent_run, task, attempt, worker_run, tool_call = setup_test_data(db_session, project_id, adapter_kind="agy")
+        worker_run_id = worker_run.id
+        db_session.commit()
+
+    async def mock_run_existing(session, settings, worker_run_arg, mode):
+        raise RuntimeError("")
+
+    import aidp_server.worker_execution
+    monkeypatch.setattr(aidp_server.worker_execution, "run_existing_agy_worker_run", mock_run_existing)
+    monkeypatch.setattr(aidp_server.worker_execution, "get_session_factory", lambda: app_harness.session_factory)
+
+    await background_agy_runner(worker_run_id=worker_run_id)
+
+    with app_harness.session_factory() as db_session:
+        worker_run = db_session.get(WorkerRun, worker_run_id)
+        assert worker_run.status == RecordStatus.FAILED
+        assert worker_run.error_message == repr(RuntimeError(""))
+        assert worker_run.error_message
+
+        attempt = db_session.get(TaskAttempt, worker_run.task_attempt_id)
+        assert attempt.status == TaskAttemptStatus.FAILED

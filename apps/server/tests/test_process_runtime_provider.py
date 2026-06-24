@@ -169,3 +169,30 @@ def test_provider_preserves_artifact_generation(app_harness: AppHarness):
 
         stderr_art = session.get(ArtifactRef, run_record.stderr_artifact_id)
         assert stderr_art.kind.value == "error_log"
+
+
+def test_provider_uses_fallback_error_message_for_empty_exception(app_harness: AppHarness, monkeypatch):
+    repo_dir, project_id, repo_id = setup_repo_and_task(app_harness, "exec_error_test", "repo_exec_error")
+    provider = get_process_runtime_provider()
+
+    async def _raise_empty_exception(*args, **kwargs):
+        raise RuntimeError("")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _raise_empty_exception)
+
+    with app_harness.session_factory() as session:
+        run_record = asyncio.run(provider.run(
+            session=session,
+            settings=app_harness.settings,
+            executable=sys.executable,
+            arguments=["-c", "print('hello')"],
+            working_directory=str(repo_dir),
+            timeout_seconds=5,
+            project_id=project_id,
+            repository_id=repo_id,
+        ))
+
+        assert run_record.status.value == "failed"
+        assert run_record.error_code == "EXECUTION_ERROR"
+        assert run_record.error_message == repr(RuntimeError(""))
+        assert run_record.error_message
