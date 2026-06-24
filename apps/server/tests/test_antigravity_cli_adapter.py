@@ -65,6 +65,7 @@ def test_antigravity_cli_dynamic_prompt_uses_task_and_work_room_feedback(
 
 def test_antigravity_cli_disabled_by_default(app_harness: AppHarness, tmp_path: Path) -> None:
     authenticate(app_harness)
+    app_harness.settings.enable_experimental_antigravity_cli = False
 
     response = app_harness.client.get("/external-cli/antigravity/status")
     assert response.status_code == 200

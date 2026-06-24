@@ -20,9 +20,7 @@ class WorkerExecutionService(Protocol):
         tool_call: ToolCall,
         settings: Settings,
     ) -> dict[str, Any]:
-        """
-        Orchestrates the execution of a worker run.
-        """
+        """Orchestrates the execution of a worker run."""
         ...
 
 
@@ -40,15 +38,12 @@ class LocalBackgroundWorkerExecutionService:
         tool_call: ToolCall,
         settings: Settings,
     ) -> dict[str, Any]:
-        """
-        Hands off an owner-created WorkerRun to the AGY execution boundary.
-        """
-        # Defensive check: gate should have been verified in owner_tools.py
+        """Hands off an owner-created WorkerRun to the AGY execution boundary."""
         if not settings.allow_owner_agy_worker_run:
             raise ValueError("AGY worker run is disabled")
 
-        from aidp_server.db.models import RecordStatus, TaskAttemptStatus
         from aidp_server.audit import record_audit_event
+        from aidp_server.db.models import RecordStatus, TaskAttemptStatus
 
         worker_run.status = RecordStatus.RUNNING
         task_attempt.status = TaskAttemptStatus.RUNNING_WORKER
@@ -75,17 +70,14 @@ class LocalBackgroundWorkerExecutionService:
                 "task_attempt_id": task_attempt.id,
                 "worker_run_id": worker_run.id,
                 "adapter": "agy",
+                "agy_prompt_mode": "task_instructions",
             },
         )
 
-        # The background task needs its own session to avoid sharing the request's connection
         if not self._background_tasks:
             raise RuntimeError("background_tasks is required for AGY handoff in local background execution")
 
-        self._background_tasks.add_task(
-            background_agy_runner,
-            worker_run_id=worker_run.id,
-        )
+        self._background_tasks.add_task(background_agy_runner, worker_run_id=worker_run.id)
 
         return {
             "task_attempt_id": task_attempt.id,
@@ -108,29 +100,26 @@ async def background_agy_runner(worker_run_id: str) -> None:
             return
 
         try:
-            # We default to controlled_readme_test for MVP testing
-            await run_existing_agy_worker_run(
-                session, settings, worker_run, mode="controlled_readme_test"
-            )
+            await run_existing_agy_worker_run(session, settings, worker_run)
             session.commit()
         except Exception as e:
             print(f"Exception in background_agy_runner: {e}")
             session.rollback()
             error_message = str(e) or repr(e) or type(e).__name__
-            
-            # Mark as failed if an unhandled exception occurred
+
             from aidp_server.db.models import RecordStatus, TaskAttemptStatus
-            
+
             worker_run = session.get(WorkerRun, worker_run_id)
             if worker_run:
                 worker_run.status = RecordStatus.FAILED
                 worker_run.error_message = error_message
-                
+
                 attempt = session.get(TaskAttempt, worker_run.task_attempt_id)
                 if attempt:
                     attempt.status = TaskAttemptStatus.FAILED
-                    
+
                 session.commit()
+
 
 def get_worker_execution_service(background_tasks: BackgroundTasks | None = None) -> WorkerExecutionService:
     return LocalBackgroundWorkerExecutionService(background_tasks)
