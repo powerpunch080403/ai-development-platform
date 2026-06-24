@@ -77,7 +77,7 @@ def setup_test_data(db_session, project_id, adapter_kind="agy"):
         repository_id=task.repository_id,
         worker_id=worker.id,
         claimed_by_worker_id=worker.id,
-        status=TaskAttemptStatus.CREATED,
+        status=TaskAttemptStatus.QUEUED_WORKER,
         attempt_number=1,
     )
     db_session.add(attempt)
@@ -91,7 +91,7 @@ def setup_test_data(db_session, project_id, adapter_kind="agy"):
         task_attempt_id=attempt.id,
         worker_id=worker.id,
         adapter_kind=adapter_kind,
-        status=RecordStatus.CREATED,
+        status=RecordStatus.QUEUED,
     )
     db_session.add(worker_run)
     db_session.flush()
@@ -99,11 +99,14 @@ def setup_test_data(db_session, project_id, adapter_kind="agy"):
     return user, agent_run, task, attempt, worker_run
 
 
-def test_agy_worker_run_gate_disabled(app_harness: AppHarness):
+def test_agy_worker_run_gate_disabled(app_harness: AppHarness, monkeypatch):
     from test_conversations_and_tools import authenticate, create_project
 
     authenticate(app_harness)
     project_id = create_project(app_harness)
+
+    from aidp_server.config import get_settings
+    monkeypatch.setattr(get_settings(), "allow_owner_agy_worker_run", False)
 
     with app_harness.session_factory() as db_session:
         user, agent_run, task, attempt, worker_run = setup_test_data(
@@ -143,8 +146,8 @@ def test_agy_worker_run_gate_disabled(app_harness: AppHarness):
         db_session.refresh(attempt)
         db_session.refresh(worker_run)
 
-        assert worker_run.status == RecordStatus.CREATED
-        assert attempt.status == TaskAttemptStatus.CREATED
+        assert worker_run.status == RecordStatus.QUEUED
+        assert attempt.status == TaskAttemptStatus.QUEUED_WORKER
 
         audit_event = db_session.scalars(
             select(AuditEvent)
@@ -160,11 +163,14 @@ def test_agy_worker_run_gate_disabled(app_harness: AppHarness):
         assert audit_event.metadata_json.get("previous_worker_context_reused") is False
 
 
-def test_agy_worker_run_gate_cannot_be_enabled_by_payload(app_harness: AppHarness):
+def test_agy_worker_run_gate_cannot_be_enabled_by_payload(app_harness: AppHarness, monkeypatch):
     from test_conversations_and_tools import authenticate, create_project
 
     authenticate(app_harness)
     project_id = create_project(app_harness)
+
+    from aidp_server.config import get_settings
+    monkeypatch.setattr(get_settings(), "allow_owner_agy_worker_run", False)
 
     with app_harness.session_factory() as db_session:
         user, agent_run, task, attempt, worker_run = setup_test_data(
@@ -262,9 +268,9 @@ def test_agy_worker_run_gate_enabled_without_helper(app_harness: AppHarness, mon
         db_session.refresh(attempt)
         db_session.refresh(worker_run)
 
-        # states remain CREATED
-        assert worker_run.status == RecordStatus.CREATED
-        assert attempt.status == TaskAttemptStatus.CREATED
+        # states remain queued
+        assert worker_run.status == RecordStatus.QUEUED
+        assert attempt.status == TaskAttemptStatus.QUEUED_WORKER
 
         audit_event = db_session.scalars(
             select(AuditEvent)

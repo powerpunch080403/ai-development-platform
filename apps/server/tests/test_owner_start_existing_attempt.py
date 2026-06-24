@@ -88,11 +88,11 @@ def test_owner_can_start_existing_follow_up_attempt(app_harness: AppHarness) -> 
         worker_run = session.get(WorkerRun, result["worker_run_id"])
         assert attempt is not None
         assert worker_run is not None
-        assert attempt.status == TaskAttemptStatus.CREATED
+        assert attempt.status == TaskAttemptStatus.QUEUED_WORKER
         assert attempt.worker_id == worker_run.worker_id
         assert attempt.claimed_by_worker_id == worker_run.worker_id
         assert worker_run.task_attempt_id == follow_up_attempt_id
-        assert worker_run.status == RecordStatus.CREATED
+        assert worker_run.status == RecordStatus.QUEUED
 
 
 def test_owner_cannot_start_same_attempt_twice(app_harness: AppHarness) -> None:

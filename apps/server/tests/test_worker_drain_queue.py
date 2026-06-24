@@ -57,7 +57,7 @@ def _drain_mock_queue(app_harness: AppHarness, run_id: str):
     )
 
 
-def test_worker_drain_queue_runs_oldest_created_worker_run(app_harness: AppHarness) -> None:
+def test_worker_drain_queue_runs_oldest_queued_worker_run(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     project_id = create_project(app_harness)
     run = _agent_run(app_harness, project_id)
@@ -86,8 +86,8 @@ def test_worker_drain_queue_runs_oldest_created_worker_run(app_harness: AppHarne
         assert second_run is not None
         assert first_attempt.status == TaskAttemptStatus.ACCEPTED
         assert first_run.status == RecordStatus.SUCCEEDED
-        assert second_attempt.status == TaskAttemptStatus.CREATED
-        assert second_run.status == RecordStatus.CREATED
+        assert second_attempt.status == TaskAttemptStatus.QUEUED_WORKER
+        assert second_run.status == RecordStatus.QUEUED
 
 
 def test_worker_drain_queue_respects_capacity_guard(app_harness: AppHarness) -> None:
@@ -123,11 +123,11 @@ def test_worker_drain_queue_respects_capacity_guard(app_harness: AppHarness) -> 
         second_run = session.get(WorkerRun, second["worker_run_id"])
         assert second_attempt is not None
         assert second_run is not None
-        assert second_attempt.status == TaskAttemptStatus.CREATED
-        assert second_run.status == RecordStatus.CREATED
+        assert second_attempt.status == TaskAttemptStatus.QUEUED_WORKER
+        assert second_run.status == RecordStatus.QUEUED
 
 
-def test_worker_drain_queue_reports_idle_when_no_created_runs(app_harness: AppHarness) -> None:
+def test_worker_drain_queue_reports_idle_when_no_queued_runs(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     project_id = create_project(app_harness)
     run = _agent_run(app_harness, project_id)
