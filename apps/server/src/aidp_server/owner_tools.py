@@ -21,10 +21,11 @@ from aidp_server.db.models import (
     RecordStatus,
     Worker,
     WorkerStatus,
+    Device,
+    DeviceType,
 )
 from sqlalchemy import func
 from aidp_server.tool_registry import seed_tool_registry
-from aidp_server.worker_execution import handoff_agy_worker_run
 from fastapi import BackgroundTasks
 
 
@@ -155,9 +156,29 @@ def execute_owner_tool(
 
         worker = session.scalars(select(Worker).where(Worker.worker_kind == db_worker_kind)).first()
         if not worker:
+            device = session.scalars(
+                select(Device)
+                .where(Device.local_user_id == tool_call.user_id)
+                .where(Device.device_type == DeviceType.LOCAL_RUNTIME)
+            ).first()
+
+            if not device:
+                device = session.scalars(
+                    select(Device).where(Device.local_user_id == tool_call.user_id)
+                ).first()
+
+            if not device:
+                device = Device(
+                    local_user_id=tool_call.user_id,
+                    device_type=DeviceType.LOCAL_RUNTIME,
+                    display_name="System Local Runtime",
+                )
+                session.add(device)
+                session.flush()
+
             worker = Worker(
                 local_user_id=tool_call.user_id,
-                device_id="system",
+                device_id=device.id,
                 display_name=f"System {db_worker_kind} Worker",
                 worker_kind=db_worker_kind,
                 status=WorkerStatus.AVAILABLE,
@@ -320,14 +341,16 @@ def execute_owner_tool(
                     raise RuntimeError("background_tasks is required for AGY handoff")
 
                 try:
-                    handoff_result = handoff_agy_worker_run(
+                    from aidp_server.worker_execution import get_worker_execution_service
+
+                    exec_service = get_worker_execution_service(background_tasks)
+                    handoff_result = exec_service.run_task_attempt(
                         session=session,
                         worker_run=worker_run,
                         task_attempt=attempt,
                         task=task,
                         tool_call=tool_call,
                         settings=settings,
-                        background_tasks=background_tasks,
                     )
                 except NotImplementedError as e:
                     tool_call.status = ToolCallStatus.FAILED

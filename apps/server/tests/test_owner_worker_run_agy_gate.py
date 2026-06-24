@@ -229,12 +229,16 @@ def test_agy_worker_run_gate_enabled_without_helper(app_harness: AppHarness, mon
         db_session.add(tool_call)
         db_session.flush()
 
-        import aidp_server.owner_tools
+        import aidp_server.worker_execution
 
-        def mock_handoff(*args, **kwargs):
-            raise NotImplementedError("Owner-triggered AGY worker handoff is not implemented yet.")
+        class MockWorkerExecutionService:
+            def run_task_attempt(self, *args, **kwargs):
+                raise NotImplementedError("Owner-triggered AGY worker handoff is not implemented yet.")
 
-        monkeypatch.setattr(aidp_server.owner_tools, "handoff_agy_worker_run", mock_handoff)
+        def mock_get_worker_execution_service(*args, **kwargs):
+            return MockWorkerExecutionService()
+
+        monkeypatch.setattr(aidp_server.worker_execution, "get_worker_execution_service", mock_get_worker_execution_service)
 
         bg_tasks = MockBackgroundTasks()
         result = execute_owner_tool(db_session, tool_call, background_tasks=bg_tasks)
@@ -280,26 +284,28 @@ def test_agy_worker_run_gate_enabled_with_helper(app_harness: AppHarness, monkey
     settings = get_settings()
     monkeypatch.setattr(settings, "allow_owner_agy_worker_run", True)
 
-    import aidp_server.owner_tools
+    import aidp_server.worker_execution
 
-    def mock_handoff(
-        session, worker_run, task_attempt, task, tool_call, settings, background_tasks
-    ):
-        from aidp_server.db.models import RecordStatus, TaskAttemptStatus
+    class MockWorkerExecutionService:
+        def run_task_attempt(self, session, worker_run, task_attempt, task, tool_call, settings):
+            from aidp_server.db.models import RecordStatus, TaskAttemptStatus
 
-        worker_run.status = RecordStatus.RUNNING
-        task_attempt.status = TaskAttemptStatus.RUNNING_WORKER
-        session.flush()
-        return {
-            "task_attempt_id": task_attempt.id,
-            "worker_run_id": worker_run.id,
-            "status": "handoff_started",
-            "adapter": "agy",
-            "fresh_worker_context": True,
-            "previous_worker_context_reused": False,
-        }
+            worker_run.status = RecordStatus.RUNNING
+            task_attempt.status = TaskAttemptStatus.RUNNING_WORKER
+            session.flush()
+            return {
+                "task_attempt_id": task_attempt.id,
+                "worker_run_id": worker_run.id,
+                "status": "handoff_started",
+                "adapter": "agy",
+                "fresh_worker_context": True,
+                "previous_worker_context_reused": False,
+            }
 
-    monkeypatch.setattr(aidp_server.owner_tools, "handoff_agy_worker_run", mock_handoff)
+    def mock_get_worker_execution_service(*args, **kwargs):
+        return MockWorkerExecutionService()
+
+    monkeypatch.setattr(aidp_server.worker_execution, "get_worker_execution_service", mock_get_worker_execution_service)
 
     with app_harness.session_factory() as db_session:
         user, agent_run, task, attempt, worker_run = setup_test_data(

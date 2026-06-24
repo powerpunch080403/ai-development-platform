@@ -7,8 +7,8 @@ This document outlines how to manually verify the actual `agy` handoff execution
 1. Have the `antigravity_cli` compiled or mocked in your environment.
 2. Set up the local `.env` with:
    ```env
-   ALLOW_OWNER_AGY_WORKER_RUN=true
-   ANTIGRAVITY_CLI_PATH=/path/to/your/cli
+   AIDP_ALLOW_OWNER_AGY_WORKER_RUN=true
+   AIDP_ANTIGRAVITY_CLI_PATH=agy
    ```
 
 ## Steps to Verify

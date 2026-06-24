@@ -15,7 +15,7 @@ from aidp_server.db.models import (
     Worker,
     WorkerStatus,
 )
-from aidp_server.worker_execution import handoff_agy_worker_run, background_agy_runner
+from aidp_server.worker_execution import get_worker_execution_service, background_agy_runner
 from conftest import AppHarness
 from fastapi import BackgroundTasks
 
@@ -130,15 +130,14 @@ def test_handoff_agy_worker_run_schedules_background_task(app_harness: AppHarnes
 
         bg_tasks = MockBackgroundTasks()
 
-        # Execute the handoff function directly to verify it schedules the background task
-        result = handoff_agy_worker_run(
+        exec_service = get_worker_execution_service(bg_tasks)
+        result = exec_service.run_task_attempt(
             session=db_session,
             worker_run=worker_run,
             task_attempt=attempt,
             task=task,
             tool_call=tool_call,
             settings=settings,
-            background_tasks=bg_tasks,
         )
 
         assert result["status"] == "handoff_started"
