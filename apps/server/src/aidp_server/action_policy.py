@@ -44,6 +44,12 @@ ACTION_CATALOG: list[ActionPolicyDefinition] = [
     ActionPolicyDefinition(
         "worker.drain_queue", "R1", "allow", "Drain the next queued worker run"
     ),
+    ActionPolicyDefinition(
+        "worker.recover_stale_runs",
+        "R1",
+        "allow",
+        "Recover stale running worker runs",
+    ),
     ActionPolicyDefinition("task_attempt.create", "R1", "allow", "Create task attempt"),
     ActionPolicyDefinition("task_attempt.update_status", "R1", "allow", "Update task attempt status"),
     ActionPolicyDefinition("worker.register", "R1", "allow", "Register worker"),

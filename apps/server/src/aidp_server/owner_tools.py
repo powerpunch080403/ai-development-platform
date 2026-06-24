@@ -37,6 +37,7 @@ ALLOWED_OWNER_TOOLS = {
     "worker.start_task_attempt",
     "worker.run_task_attempt",
     "worker.drain_queue",
+    "worker.recover_stale_runs",
 }
 READ_ONLY_OWNER_TOOLS = {"project.list", "task.list"}
 
@@ -644,6 +645,35 @@ def execute_owner_tool(
             tool_call,
             worker=worker,
             background_tasks=background_tasks,
+        )
+
+    if tool_call.tool_name == "worker.recover_stale_runs":
+        from aidp_server.config import get_settings
+        from aidp_server.worker_liveness import recover_stale_worker_runs
+
+        args = tool_call.arguments_json or {}
+        timeout_seconds_arg = args.get("timeout_seconds")
+        if timeout_seconds_arg is None:
+            timeout_seconds = get_settings().worker_run_stale_timeout_seconds
+        elif isinstance(timeout_seconds_arg, int):
+            timeout_seconds = timeout_seconds_arg
+        else:
+            return _fail(tool_call, "invalid_arguments", "timeout_seconds must be an integer")
+
+        worker_id = args.get("worker_id")
+        if worker_id is not None and not isinstance(worker_id, str):
+            return _fail(tool_call, "invalid_arguments", "worker_id must be a string")
+
+        worker_adapter = args.get("worker_adapter")
+        if worker_adapter is not None and not isinstance(worker_adapter, str):
+            return _fail(tool_call, "invalid_arguments", "worker_adapter must be a string")
+
+        return recover_stale_worker_runs(
+            session,
+            tool_call=tool_call,
+            timeout_seconds=timeout_seconds,
+            worker_id=worker_id,
+            worker_adapter=worker_adapter,
         )
 
     if tool_call.tool_name == "worker.run_task_attempt":
