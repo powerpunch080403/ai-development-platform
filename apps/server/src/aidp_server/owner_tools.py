@@ -182,6 +182,50 @@ def _create_worker_run_for_attempt(
     return worker_run
 
 
+def _active_worker_run_for_worker(session: Session, worker_run: WorkerRun) -> WorkerRun | None:
+    return session.scalars(
+        select(WorkerRun)
+        .where(WorkerRun.worker_id == worker_run.worker_id)
+        .where(WorkerRun.id != worker_run.id)
+        .where(WorkerRun.status == RecordStatus.RUNNING)
+        .order_by(WorkerRun.created_at.asc())
+    ).first()
+
+
+def _queue_due_to_worker_capacity(
+    session: Session,
+    tool_call: ToolCall,
+    *,
+    worker_run: WorkerRun,
+    attempt: TaskAttempt,
+    active_worker_run: WorkerRun,
+) -> dict[str, Any]:
+    record_audit_event(
+        session,
+        event_type="worker_run.queued_capacity_full",
+        message="WorkerRun left queued because worker capacity is full",
+        local_user_id=tool_call.user_id,
+        project_id=attempt.project_id,
+        agent_run_id=tool_call.agent_run_id,
+        tool_call_id=tool_call.id,
+        metadata={
+            "task_attempt_id": attempt.id,
+            "worker_run_id": worker_run.id,
+            "worker_id": worker_run.worker_id,
+            "active_worker_run_id": active_worker_run.id,
+            "capacity": 1,
+        },
+    )
+    return {
+        "task_attempt_id": attempt.id,
+        "worker_run_id": worker_run.id,
+        "status": "queued",
+        "reason": "worker_capacity_full",
+        "active_worker_run_id": active_worker_run.id,
+        "worker_capacity": 1,
+    }
+
+
 def execute_owner_tool(
     session: Session, tool_call: ToolCall, background_tasks: BackgroundTasks | None = None
 ) -> dict[str, Any]:
@@ -347,6 +391,16 @@ def execute_owner_tool(
                 tool_call,
                 "unsupported_worker_adapter",
                 f"Unsupported worker adapter: {worker_run.adapter_kind}",
+            )
+
+        active_worker_run = _active_worker_run_for_worker(session, worker_run)
+        if active_worker_run is not None:
+            return _queue_due_to_worker_capacity(
+                session,
+                tool_call,
+                worker_run=worker_run,
+                attempt=attempt,
+                active_worker_run=active_worker_run,
             )
 
         from aidp_server.config import get_settings
