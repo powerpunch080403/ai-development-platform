@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from aidp_server.config import ensure_app_data_dir, get_settings
 from aidp_server.db.base import Base
 from aidp_server.db import models  # noqa: F401
+from aidp_server import work_room  # noqa: F401
 
 
 config = context.config

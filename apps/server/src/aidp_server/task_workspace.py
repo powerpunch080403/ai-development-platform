@@ -16,6 +16,11 @@ from aidp_server.db.models import (
     WorkerRun,
 )
 from aidp_server.db.session import get_session
+from aidp_server.work_room import (
+    TaskWorkRoomMessage,
+    WorkRoomMessageView,
+    work_room_message_view,
+)
 from aidp_server.write_scope import normalize_write_scope
 
 router = APIRouter(tags=["task workspace"])
@@ -172,6 +177,7 @@ class WorkspaceAttemptBundleView(BaseModel):
 class TaskWorkspaceView(BaseModel):
     task: WorkspaceTaskView
     attempts: list[WorkspaceAttemptBundleView]
+    work_room_messages: list[WorkRoomMessageView]
 
 
 def task_view(task: Task) -> WorkspaceTaskView:
@@ -349,6 +355,12 @@ def get_task_workspace(
         ).all()
         worktrees_by_attempt = {worktree.task_attempt_id: worktree for worktree in worktrees}
 
+    work_room_messages = session.scalars(
+        select(TaskWorkRoomMessage)
+        .where(TaskWorkRoomMessage.task_id == task.id)
+        .order_by(TaskWorkRoomMessage.created_at.asc(), TaskWorkRoomMessage.id.asc())
+    ).all()
+
     return TaskWorkspaceView(
         task=task_view(task),
         attempts=[
@@ -363,4 +375,5 @@ def get_task_workspace(
             )
             for attempt in attempts
         ],
+        work_room_messages=[work_room_message_view(message) for message in work_room_messages],
     )
