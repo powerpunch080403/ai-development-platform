@@ -18,7 +18,7 @@ def _alembic_config() -> Config:
 def test_alembic_has_single_head() -> None:
     script = ScriptDirectory.from_config(_alembic_config())
 
-    assert script.get_heads() == ["20260624_0012"]
+    assert script.get_heads() == ["20260624_0013"]
 
 
 def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(

@@ -115,6 +115,7 @@ class AgentRunStepType(StrEnum):
 
 class RecordStatus(StrEnum):
     CREATED = "created"
+    QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -200,6 +201,7 @@ class WorkerKind(StrEnum):
 
 class TaskAttemptStatus(StrEnum):
     CREATED = "created"
+    QUEUED_WORKER = "queued_worker"
     PREPARING_WORKTREE = "preparing_worktree"
     RUNNING_WORKER = "running_worker"
     WAITING_FOR_COMMIT = "waiting_for_commit"

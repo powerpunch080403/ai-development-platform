@@ -77,7 +77,7 @@ def setup_test_data(db_session, project_id, adapter_kind="agy"):
         repository_id=task.repository_id,
         worker_id=worker.id,
         claimed_by_worker_id=worker.id,
-        status=TaskAttemptStatus.CREATED,
+        status=TaskAttemptStatus.QUEUED_WORKER,
         attempt_number=1,
     )
     db_session.add(attempt)
@@ -91,7 +91,7 @@ def setup_test_data(db_session, project_id, adapter_kind="agy"):
         task_attempt_id=attempt.id,
         worker_id=worker.id,
         adapter_kind=adapter_kind,
-        status=RecordStatus.CREATED,
+        status=RecordStatus.QUEUED,
     )
     db_session.add(worker_run)
     db_session.flush()
@@ -175,9 +175,8 @@ async def test_background_agy_runner_calls_existing_boundary(app_harness: AppHar
 
     # Mock run_existing_agy_worker_run
     called_with = {}
-    async def mock_run_existing(session, settings, worker_run_arg, mode):
+    async def mock_run_existing(session, settings, worker_run_arg):
         called_with["worker_run_id"] = worker_run_arg.id
-        called_with["mode"] = mode
         return {"status": "handoff_started"}
 
     import aidp_server.worker_execution
@@ -190,7 +189,6 @@ async def test_background_agy_runner_calls_existing_boundary(app_harness: AppHar
     # Verify that the mocked helper was called
     assert "worker_run_id" in called_with
     assert called_with["worker_run_id"] == worker_run_id
-    assert called_with["mode"] == "controlled_readme_test"
 
 
 @pytest.mark.anyio
@@ -206,7 +204,7 @@ async def test_background_agy_runner_handles_exception(app_harness: AppHarness, 
         db_session.commit()
 
     # Mock run_existing_agy_worker_run to raise an exception
-    async def mock_run_existing(session, settings, worker_run_arg, mode):
+    async def mock_run_existing(session, settings, worker_run_arg):
         raise RuntimeError("Mock failure in agy handoff")
 
     import aidp_server.worker_execution
@@ -238,7 +236,7 @@ async def test_background_agy_runner_handles_empty_exception_message(app_harness
         worker_run_id = worker_run.id
         db_session.commit()
 
-    async def mock_run_existing(session, settings, worker_run_arg, mode):
+    async def mock_run_existing(session, settings, worker_run_arg):
         raise RuntimeError("")
 
     import aidp_server.worker_execution

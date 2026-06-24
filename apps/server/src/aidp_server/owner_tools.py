@@ -159,7 +159,7 @@ def _create_worker_run_for_attempt(
     existing_active_run = session.scalars(
         select(WorkerRun)
         .where(WorkerRun.task_attempt_id == attempt.id)
-        .where(WorkerRun.status.in_([RecordStatus.CREATED, RecordStatus.RUNNING]))
+        .where(WorkerRun.status.in_([RecordStatus.CREATED, RecordStatus.QUEUED, RecordStatus.RUNNING]))
         .order_by(WorkerRun.created_at.desc())
     ).first()
     if existing_active_run is not None:
@@ -168,6 +168,7 @@ def _create_worker_run_for_attempt(
 
     attempt.worker_id = worker.id
     attempt.claimed_by_worker_id = worker.id
+    attempt.status = TaskAttemptStatus.QUEUED_WORKER
     worker_run = WorkerRun(
         local_user_id=tool_call.user_id,
         project_id=task.project_id,
@@ -176,7 +177,7 @@ def _create_worker_run_for_attempt(
         task_attempt_id=attempt.id,
         worker_id=worker.id,
         adapter_kind=worker_adapter,
-        status=RecordStatus.CREATED,
+        status=RecordStatus.QUEUED,
     )
     session.add(worker_run)
     session.flush()
@@ -215,16 +216,19 @@ def _task_has_active_worker_run(
     return active is not None
 
 
-def _next_created_worker_run_for_worker(session: Session, worker: Worker) -> WorkerRun | None:
+def _next_queued_worker_run_for_worker(session: Session, worker: Worker) -> WorkerRun | None:
     candidates = session.scalars(
         select(WorkerRun)
         .where(WorkerRun.worker_id == worker.id)
-        .where(WorkerRun.status == RecordStatus.CREATED)
+        .where(WorkerRun.status.in_([RecordStatus.QUEUED, RecordStatus.CREATED]))
         .order_by(WorkerRun.created_at.asc())
     ).all()
     for candidate in candidates:
         attempt = session.get(TaskAttempt, candidate.task_attempt_id)
-        if attempt is None or attempt.status is not TaskAttemptStatus.CREATED:
+        if attempt is None or attempt.status not in {
+            TaskAttemptStatus.QUEUED_WORKER,
+            TaskAttemptStatus.CREATED,
+        }:
             continue
         if _task_has_active_worker_run(
             session,
@@ -244,6 +248,10 @@ def _queue_due_to_worker_capacity(
     attempt: TaskAttempt,
     active_worker_run: WorkerRun,
 ) -> dict[str, Any]:
+    worker_run.status = RecordStatus.QUEUED
+    attempt.status = TaskAttemptStatus.QUEUED_WORKER
+    session.flush()
+
     record_audit_event(
         session,
         event_type="worker_run.queued_capacity_full",
@@ -309,13 +317,25 @@ def _run_worker_run(
                 project_id=attempt.project_id,
                 agent_run_id=tool_call.agent_run_id,
                 tool_call_id=tool_call.id,
-                metadata={"adapter": "agy", "gate": "disabled"},
+                metadata={
+                    "adapter": "agy",
+                    "gate": "disabled",
+                    "fresh_worker_context": True,
+                    "previous_worker_context_reused": False,
+                },
             )
-            return _fail(
-                tool_call,
-                "agy_worker_disabled",
-                "Owner-triggered AGY worker execution is disabled by local configuration.",
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "agy_worker_disabled"
+            tool_call.error_message = (
+                "Owner-triggered AGY worker execution is disabled by local configuration."
             )
+            return {
+                "error": "agy_worker_disabled",
+                "adapter": "agy",
+                "gate": "disabled",
+                "fresh_worker_context": True,
+                "previous_worker_context_reused": False,
+            }
 
         if not background_tasks:
             raise RuntimeError("background_tasks is required for AGY handoff")
@@ -324,14 +344,41 @@ def _run_worker_run(
         from aidp_server.worktrees import ensure_worktree
 
         ensure_worktree(session, settings, attempt.id, tool_call.user_id)
-        handoff_result = get_worker_execution_service(background_tasks).run_task_attempt(
-            session=session,
-            worker_run=worker_run,
-            task_attempt=attempt,
-            task=task,
-            tool_call=tool_call,
-            settings=settings,
-        )
+        try:
+            handoff_result = get_worker_execution_service(background_tasks).run_task_attempt(
+                session=session,
+                worker_run=worker_run,
+                task_attempt=attempt,
+                task=task,
+                tool_call=tool_call,
+                settings=settings,
+            )
+        except NotImplementedError as error:
+            error_message = str(error) or repr(error)
+            record_audit_event(
+                session,
+                event_type="owner_tool_call.rejected",
+                message="worker.run_task_attempt rejected (AGY handoff not implemented)",
+                local_user_id=tool_call.user_id,
+                project_id=attempt.project_id,
+                agent_run_id=tool_call.agent_run_id,
+                tool_call_id=tool_call.id,
+                metadata={
+                    "error": "agy_handoff_not_implemented",
+                    "adapter": "agy",
+                    "fresh_worker_context": True,
+                    "previous_worker_context_reused": False,
+                },
+            )
+            tool_call.status = ToolCallStatus.FAILED
+            tool_call.error_code = "agy_handoff_not_implemented"
+            tool_call.error_message = error_message
+            return {
+                "error": "agy_handoff_not_implemented",
+                "adapter": "agy",
+                "fresh_worker_context": True,
+                "previous_worker_context_reused": False,
+            }
         worker_run.status = RecordStatus.RUNNING
         attempt.status = TaskAttemptStatus.RUNNING_WORKER
         session.flush()
@@ -374,6 +421,7 @@ def _run_worker_run(
             "worker_run_id": worker_run.id,
             "fresh_worker_context": True,
             "previous_worker_context_reused": False,
+            "continuity_source": "owner_authored_task_packet",
         },
     )
     return {
@@ -403,7 +451,7 @@ def drain_next_worker_run(
             "worker_capacity": 1,
         }
 
-    worker_run = _next_created_worker_run_for_worker(session, worker)
+    worker_run = _next_queued_worker_run_for_worker(session, worker)
     if worker_run is None:
         return {
             "worker_id": worker.id,
@@ -513,14 +561,20 @@ def execute_owner_tool(
             task = _owned_task(session, attempt.task_id, tool_call.user_id)
             if task is None:
                 return _fail(tool_call, "task_not_found", "Task not found or access denied")
-            if attempt.status is not TaskAttemptStatus.CREATED:
+            if attempt.status not in {TaskAttemptStatus.CREATED, TaskAttemptStatus.QUEUED_WORKER}:
                 return _fail(
                     tool_call,
                     "task_attempt_not_startable",
                     "Only created TaskAttempts can be started by this tool",
                 )
         else:
-            task = _owned_task(session, args.get("task_id"), tool_call.user_id)
+            task_id = args.get("task_id")
+            if not task_id:
+                tool_call.status = ToolCallStatus.FAILED
+                tool_call.error_code = "invalid_arguments"
+                tool_call.error_message = "task_id is required"
+                return {"error": "task_id is required"}
+            task = _owned_task(session, task_id, tool_call.user_id)
             if task is None:
                 return _fail(tool_call, "task_not_found", "Task not found or access denied")
             attempt_number = (

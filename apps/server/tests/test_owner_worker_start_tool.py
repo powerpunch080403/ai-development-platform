@@ -105,12 +105,12 @@ def test_worker_start_task_attempt_success(app_harness: AppHarness):
         assert attempt.task_id == task.id
 
         # 6. WorkerRun/TaskAttempt status is queued/created, not completed.
-        assert attempt.status == TaskAttemptStatus.CREATED
+        assert attempt.status == TaskAttemptStatus.QUEUED_WORKER
 
         worker_run = db_session.get(WorkerRun, worker_run_id)
         assert worker_run is not None
         assert worker_run.task_attempt_id == task_attempt_id
-        assert worker_run.status == RecordStatus.CREATED
+        assert worker_run.status == RecordStatus.QUEUED
         assert worker_run.adapter_kind == "mock"
 
         # Audit event checks

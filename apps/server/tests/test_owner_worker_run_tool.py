@@ -67,7 +67,7 @@ def setup_test_data(db_session, project_id, adapter_kind="mock"):
         repository_id=task.repository_id,
         worker_id=worker.id,
         claimed_by_worker_id=worker.id,
-        status=TaskAttemptStatus.CREATED,
+        status=TaskAttemptStatus.QUEUED_WORKER,
         attempt_number=1,
     )
     db_session.add(attempt)
@@ -81,7 +81,7 @@ def setup_test_data(db_session, project_id, adapter_kind="mock"):
         task_attempt_id=attempt.id,
         worker_id=worker.id,
         adapter_kind=adapter_kind,
-        status=RecordStatus.CREATED,
+        status=RecordStatus.QUEUED,
     )
     db_session.add(worker_run)
     db_session.flush()

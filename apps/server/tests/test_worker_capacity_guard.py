@@ -85,5 +85,5 @@ def test_worker_run_stays_queued_when_worker_capacity_is_full(app_harness: AppHa
         second_run = session.get(WorkerRun, second["worker_run_id"])
         assert second_attempt is not None
         assert second_run is not None
-        assert second_attempt.status == TaskAttemptStatus.CREATED
-        assert second_run.status == RecordStatus.CREATED
+        assert second_attempt.status == TaskAttemptStatus.QUEUED_WORKER
+        assert second_run.status == RecordStatus.QUEUED
