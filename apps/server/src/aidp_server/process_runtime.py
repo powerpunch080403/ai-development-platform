@@ -1,12 +1,24 @@
 import asyncio
+import subprocess
+from dataclasses import dataclass
 from typing import Protocol
+
 from sqlalchemy.orm import Session
 
-from aidp_server.db.models import ProcessRun, ProcessRunStatus, utc_now
-from aidp_server.config import Settings
-from aidp_server.redaction import redact_args, redact_text
 from aidp_server.artifacts import create_text_artifact
+from aidp_server.config import Settings
+from aidp_server.db.models import ProcessRun, ProcessRunStatus, utc_now
 from aidp_server.process_scope import validate_scope
+from aidp_server.redaction import redact_args, redact_text
+
+
+@dataclass(frozen=True)
+class ProcessExecutionResult:
+    stdout: bytes
+    stderr: bytes
+    exit_code: int | None
+    timed_out: bool
+
 
 class ProcessRuntimeProvider(Protocol):
     async def run(
@@ -29,6 +41,108 @@ class ProcessRuntimeProvider(Protocol):
         environment: dict[str, str] | None = None,
     ) -> ProcessRun:
         ...
+
+
+async def _run_asyncio_subprocess(
+    *,
+    executable: str,
+    arguments: list[str],
+    working_directory: str,
+    safe_env: dict[str, str],
+    timeout_seconds: int,
+) -> ProcessExecutionResult:
+    process = await asyncio.create_subprocess_exec(
+        executable,
+        *arguments,
+        cwd=working_directory,
+        env=safe_env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        stdin=asyncio.subprocess.DEVNULL,
+    )
+
+    try:
+        stdout_data, stderr_data = await asyncio.wait_for(
+            process.communicate(), timeout=timeout_seconds
+        )
+        return ProcessExecutionResult(
+            stdout=stdout_data,
+            stderr=stderr_data,
+            exit_code=process.returncode,
+            timed_out=False,
+        )
+    except asyncio.TimeoutError:
+        process.kill()
+        stdout_data, stderr_data = await process.communicate()
+        return ProcessExecutionResult(
+            stdout=stdout_data,
+            stderr=stderr_data,
+            exit_code=process.returncode,
+            timed_out=True,
+        )
+
+
+def _run_blocking_subprocess(
+    *,
+    executable: str,
+    arguments: list[str],
+    working_directory: str,
+    safe_env: dict[str, str],
+    timeout_seconds: int,
+) -> ProcessExecutionResult:
+    try:
+        completed = subprocess.run(
+            [executable, *arguments],
+            cwd=working_directory,
+            env=safe_env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as e:
+        return ProcessExecutionResult(
+            stdout=e.stdout or b"",
+            stderr=e.stderr or b"",
+            exit_code=None,
+            timed_out=True,
+        )
+
+    return ProcessExecutionResult(
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+        exit_code=completed.returncode,
+        timed_out=False,
+    )
+
+
+async def _run_subprocess_with_safe_fallback(
+    *,
+    executable: str,
+    arguments: list[str],
+    working_directory: str,
+    safe_env: dict[str, str],
+    timeout_seconds: int,
+) -> ProcessExecutionResult:
+    try:
+        return await _run_asyncio_subprocess(
+            executable=executable,
+            arguments=arguments,
+            working_directory=working_directory,
+            safe_env=safe_env,
+            timeout_seconds=timeout_seconds,
+        )
+    except NotImplementedError:
+        return await asyncio.to_thread(
+            _run_blocking_subprocess,
+            executable=executable,
+            arguments=arguments,
+            working_directory=working_directory,
+            safe_env=safe_env,
+            timeout_seconds=timeout_seconds,
+        )
+
 
 class NonInteractiveSubprocessRuntimeProvider:
     async def run(
@@ -81,7 +195,7 @@ class NonInteractiveSubprocessRuntimeProvider:
             status=ProcessRunStatus.BLOCKED if scope_error else ProcessRunStatus.RUNNING,
             timeout_seconds=timeout_seconds,
             started_at=utc_now() if not scope_error else None,
-            error_message=scope_error
+            error_message=scope_error,
         )
         session.add(run_record)
         session.flush()
@@ -95,34 +209,23 @@ class NonInteractiveSubprocessRuntimeProvider:
         start_time = asyncio.get_running_loop().time()
         try:
             from aidp_server.process_environment import build_process_environment
+
             safe_env = build_process_environment(environment)
 
-            process = await asyncio.create_subprocess_exec(
-                executable,
-                *arguments,
-                cwd=working_directory,
-                env=safe_env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                stdin=asyncio.subprocess.DEVNULL,
+            result = await _run_subprocess_with_safe_fallback(
+                executable=executable,
+                arguments=arguments,
+                working_directory=working_directory,
+                safe_env=safe_env,
+                timeout_seconds=timeout_seconds,
             )
-
-            try:
-                stdout_data, stderr_data = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
-                exit_code = process.returncode
-                timed_out = False
-            except asyncio.TimeoutError:
-                process.kill()
-                stdout_data, stderr_data = await process.communicate()
-                exit_code = process.returncode
-                timed_out = True
 
             end_time = asyncio.get_running_loop().time()
             duration_ms = int((end_time - start_time) * 1000)
 
             # 4. Handle output
-            stdout_text = redact_text(stdout_data.decode("utf-8", errors="replace"))
-            stderr_text = redact_text(stderr_data.decode("utf-8", errors="replace"))
+            stdout_text = redact_text(result.stdout.decode("utf-8", errors="replace"))
+            stderr_text = redact_text(result.stderr.decode("utf-8", errors="replace"))
 
             stdout_art = None
             stderr_art = None
@@ -156,25 +259,25 @@ class NonInteractiveSubprocessRuntimeProvider:
                 )
 
             # Update record
-            run_record.exit_code = exit_code
+            run_record.exit_code = result.exit_code
             run_record.duration_ms = duration_ms
             if stdout_art:
                 run_record.stdout_artifact_id = stdout_art.id
             if stderr_art:
                 run_record.stderr_artifact_id = stderr_art.id
 
-            if timed_out:
+            if result.timed_out:
                 run_record.status = ProcessRunStatus.TIMED_OUT
                 run_record.timed_out_at = utc_now()
                 run_record.error_message = f"Process timed out after {timeout_seconds} seconds"
                 run_record.error_code = "TIMED_OUT"
-            elif exit_code == 0:
+            elif result.exit_code == 0:
                 run_record.status = ProcessRunStatus.SUCCEEDED
                 run_record.completed_at = utc_now()
             else:
                 run_record.status = ProcessRunStatus.FAILED
                 run_record.failed_at = utc_now()
-                run_record.error_code = f"EXIT_CODE_{exit_code}"
+                run_record.error_code = f"EXIT_CODE_{result.exit_code}"
 
         except Exception as e:
             end_time = asyncio.get_running_loop().time()
@@ -185,6 +288,7 @@ class NonInteractiveSubprocessRuntimeProvider:
             run_record.error_code = "EXECUTION_ERROR"
 
         return run_record
+
 
 def get_process_runtime_provider() -> ProcessRuntimeProvider:
     return NonInteractiveSubprocessRuntimeProvider()
