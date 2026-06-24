@@ -41,6 +41,9 @@ ACTION_CATALOG: list[ActionPolicyDefinition] = [
     ActionPolicyDefinition(
         "worker.run_task_attempt", "R1", "allow", "Run task attempt via owner tool"
     ),
+    ActionPolicyDefinition(
+        "worker.drain_queue", "R1", "allow", "Drain the next queued worker run"
+    ),
     ActionPolicyDefinition("task_attempt.create", "R1", "allow", "Create task attempt"),
     ActionPolicyDefinition("task_attempt.update_status", "R1", "allow", "Update task attempt status"),
     ActionPolicyDefinition("worker.register", "R1", "allow", "Register worker"),
