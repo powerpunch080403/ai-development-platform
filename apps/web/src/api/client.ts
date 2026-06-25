@@ -15,7 +15,7 @@ import type {
   CreateConversationRequest,
   AppendMessageRequest,
   CreateAgentRunRequest,
-  WorkItemDto, TaskDto, TaskAttemptDto, WorkerDto, WorkerRunDto, CreateWorkItemRequest, CreateTaskRequest, RegisterWorkerRequest,
+  WorkItemDto, TaskDto, TaskAttemptDto, TaskWorkspaceDto, WorkerDto, WorkerRunDto, CreateWorkItemRequest, CreateTaskRequest, RegisterWorkerRequest,
   GitWorktreeDto,WorktreeStatusDto,WorktreeDiffDto,ArtifactRefDto,
   AttemptReviewDto,PrepareSquashMergeResponse,
   RunMockWorkerRequest, RunMockWorkerResponse,
@@ -128,6 +128,7 @@ export function createWorkItem(projectId:string,input:CreateWorkItemRequest):Pro
 export function listTasks(projectId:string):Promise<TaskDto[]>{return request<TaskDto[]>(`/projects/${projectId}/tasks`)}
 export function createTask(projectId:string,input:CreateTaskRequest):Promise<TaskDto>{return request<TaskDto>(`/projects/${projectId}/tasks`,{method:"POST",body:JSON.stringify(input)})}
 export function getTaskTrace(taskId: string): Promise<TaskTraceDto> { return request<TaskTraceDto>(`/tasks/${taskId}/trace`); }
+export function getTaskWorkspace(taskId:string):Promise<TaskWorkspaceDto>{return request<TaskWorkspaceDto>(`/tasks/${taskId}/workspace`)}
 export function listAttempts(taskId:string):Promise<TaskAttemptDto[]>{return request<TaskAttemptDto[]>(`/tasks/${taskId}/attempts`)}
 export function createAttempt(taskId:string):Promise<TaskAttemptDto>{return request<TaskAttemptDto>(`/tasks/${taskId}/attempts`,{method:"POST",body:"{}"})}
 export function listWorkers():Promise<WorkerDto[]>{return request<WorkerDto[]>("/workers")}
