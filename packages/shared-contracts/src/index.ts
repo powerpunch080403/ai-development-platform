@@ -101,6 +101,33 @@ export type TaskDto = { id:string; project_id:string; repository_id:string|null;
 export type TaskAttemptDto = { id:string; task_id:string; project_id:string; repository_id:string|null; claimed_by_worker_id:string|null; status:string; attempt_number:number; lease_expires_at:string|null; result_summary:string|null };
 export type WorkerDto = { id:string; display_name:string; worker_kind:string; status:string; capabilities:Record<string,unknown>|null; last_seen_at:string|null; registered_at:string; revoked_at:string|null };
 export type WorkerRunDto = { id:string; local_user_id:string; project_id:string; repository_id:string|null; task_id:string; task_attempt_id:string; worker_id:string; adapter_kind:string; status:string; last_heartbeat_at:string|null; lease_expires_at:string|null; heartbeat_source:string|null; started_at:string|null; completed_at:string|null; failed_at:string|null; cancelled_at:string|null; summary:string|null; error_code:string|null; error_message:string|null; updated_at:string };
+export type WorkspaceWorkerRunDto = Omit<WorkerRunDto, "local_user_id"> & { created_at:string; lease_expired:boolean };
+export type WorkspaceOperationsSummaryDto = {
+  active_attempt_count:number;
+  active_worker_run_count:number;
+  stale_worker_run_count:number;
+  attention_count:number;
+  follow_up_available:boolean;
+  follow_up_source_attempt_id:string|null;
+  follow_up_blocked_by_attempt_id:string|null;
+  follow_up_blocked_by_status:string|null;
+  latest_worker_run_id:string|null;
+  latest_worker_run_status:string|null;
+  latest_worker_run_lease_expired:boolean;
+};
+export type WorkspaceAttemptBundleDto = {
+  attempt:TaskAttemptDto;
+  worker_runs:WorkspaceWorkerRunDto[];
+  process_runs:unknown[];
+  artifacts:ArtifactRefDto[];
+  worktree:GitWorktreeDto|null;
+};
+export type TaskWorkspaceDto = {
+  task:TaskDto;
+  attempts:WorkspaceAttemptBundleDto[];
+  operations_summary:WorkspaceOperationsSummaryDto;
+  work_room_messages:unknown[];
+};
 export type RunMockWorkerRequest = { commit_message?:string };
 export type RunMockWorkerResponse = { worker_run:WorkerRunDto; artifact_id?:string; status:string };
 export type CreateWorkItemRequest = { title:string; description?:string; parent_work_item_id?:string; work_item_type:string; priority?:number };
