@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,12 +7,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from aidp_server.auth import CurrentAuth
+from aidp_server.attempt_retry_policy import (
+    EXPLICIT_RETRY_SOURCE_STATUSES,
+    RETRY_BLOCKING_ATTEMPT_STATUSES,
+)
 from aidp_server.db.models import (
     ArtifactRef,
     GitWorktree,
     ProcessRun,
+    RecordStatus,
     Task,
     TaskAttempt,
+    TaskAttemptStatus,
     WorkerRun,
 )
 from aidp_server.db.session import get_session
@@ -80,6 +86,10 @@ class WorkspaceWorkerRunView(BaseModel):
     worker_id: str
     adapter_kind: str
     status: str
+    last_heartbeat_at: datetime | None
+    lease_expires_at: datetime | None
+    heartbeat_source: str | None
+    lease_expired: bool
     started_at: datetime | None
     completed_at: datetime | None
     failed_at: datetime | None
@@ -174,9 +184,24 @@ class WorkspaceAttemptBundleView(BaseModel):
     worktree: WorkspaceWorktreeView | None
 
 
+class WorkspaceOperationsSummaryView(BaseModel):
+    active_attempt_count: int
+    active_worker_run_count: int
+    stale_worker_run_count: int
+    attention_count: int
+    follow_up_available: bool
+    follow_up_source_attempt_id: str | None
+    follow_up_blocked_by_attempt_id: str | None
+    follow_up_blocked_by_status: str | None
+    latest_worker_run_id: str | None
+    latest_worker_run_status: str | None
+    latest_worker_run_lease_expired: bool
+
+
 class TaskWorkspaceView(BaseModel):
     task: WorkspaceTaskView
     attempts: list[WorkspaceAttemptBundleView]
+    operations_summary: WorkspaceOperationsSummaryView
     work_room_messages: list[WorkRoomMessageView]
 
 
@@ -231,7 +256,24 @@ def attempt_view(attempt: TaskAttempt) -> WorkspaceAttemptView:
     )
 
 
-def worker_run_view(run: WorkerRun) -> WorkspaceWorkerRunView:
+def as_utc(value: datetime) -> datetime:
+    return (
+        value.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None
+        else value.astimezone(timezone.utc)
+    )
+
+
+def worker_run_lease_expired(run: WorkerRun, *, now: datetime) -> bool:
+    return (
+        run.status == RecordStatus.RUNNING
+        and run.lease_expires_at is not None
+        and as_utc(run.lease_expires_at) <= now
+    )
+
+
+def worker_run_view(run: WorkerRun, *, now: datetime | None = None) -> WorkspaceWorkerRunView:
+    effective_now = now or datetime.now(timezone.utc)
     return WorkspaceWorkerRunView(
         id=run.id,
         project_id=run.project_id,
@@ -241,6 +283,10 @@ def worker_run_view(run: WorkerRun) -> WorkspaceWorkerRunView:
         worker_id=run.worker_id,
         adapter_kind=run.adapter_kind,
         status=run.status.value,
+        last_heartbeat_at=run.last_heartbeat_at,
+        lease_expires_at=run.lease_expires_at,
+        heartbeat_source=run.heartbeat_source,
+        lease_expired=worker_run_lease_expired(run, now=effective_now),
         started_at=run.started_at,
         completed_at=run.completed_at,
         failed_at=run.failed_at,
@@ -255,6 +301,71 @@ def worker_run_view(run: WorkerRun) -> WorkspaceWorkerRunView:
 
 def process_run_view(run: ProcessRun) -> WorkspaceProcessRunView:
     return WorkspaceProcessRunView.model_validate(run)
+
+
+def operations_summary_view(
+    *,
+    attempts: list[TaskAttempt],
+    worker_runs: list[WorkerRun],
+    now: datetime,
+) -> WorkspaceOperationsSummaryView:
+    active_attempts = [
+        attempt for attempt in attempts if attempt.status in RETRY_BLOCKING_ATTEMPT_STATUSES
+    ]
+    active_worker_runs = [
+        run for run in worker_runs if run.status in {RecordStatus.QUEUED, RecordStatus.RUNNING}
+    ]
+    stale_worker_runs = [
+        run for run in worker_runs if worker_run_lease_expired(run, now=now)
+    ]
+    attention_attempts = [
+        attempt
+        for attempt in attempts
+        if attempt.status in {TaskAttemptStatus.WORKER_FAILED, TaskAttemptStatus.FAILED}
+    ]
+
+    source_attempt = next(
+        (
+            attempt
+            for attempt in sorted(attempts, key=lambda item: item.attempt_number, reverse=True)
+            if attempt.status in EXPLICIT_RETRY_SOURCE_STATUSES
+        ),
+        None,
+    )
+    blocking_attempt = next(
+        (
+            attempt
+            for attempt in sorted(attempts, key=lambda item: item.attempt_number)
+            if source_attempt is not None
+            and attempt.id != source_attempt.id
+            and attempt.status in RETRY_BLOCKING_ATTEMPT_STATUSES
+        ),
+        None,
+    )
+    latest_worker_run = next(
+        iter(sorted(worker_runs, key=lambda item: item.updated_at, reverse=True)),
+        None,
+    )
+
+    return WorkspaceOperationsSummaryView(
+        active_attempt_count=len(active_attempts),
+        active_worker_run_count=len(active_worker_runs),
+        stale_worker_run_count=len(stale_worker_runs),
+        attention_count=len(attention_attempts) + len(stale_worker_runs),
+        follow_up_available=source_attempt is not None and blocking_attempt is None,
+        follow_up_source_attempt_id=source_attempt.id if source_attempt is not None else None,
+        follow_up_blocked_by_attempt_id=blocking_attempt.id if blocking_attempt is not None else None,
+        follow_up_blocked_by_status=blocking_attempt.status.value
+        if blocking_attempt is not None
+        else None,
+        latest_worker_run_id=latest_worker_run.id if latest_worker_run is not None else None,
+        latest_worker_run_status=latest_worker_run.status.value
+        if latest_worker_run is not None
+        else None,
+        latest_worker_run_lease_expired=worker_run_lease_expired(latest_worker_run, now=now)
+        if latest_worker_run is not None
+        else False,
+    )
 
 
 def artifact_view(artifact: ArtifactRef) -> WorkspaceArtifactView:
@@ -323,12 +434,15 @@ def get_task_workspace(
     artifacts_by_attempt: dict[str, list[ArtifactRef]] = {attempt.id: [] for attempt in attempts}
     worktrees_by_attempt: dict[str, GitWorktree] = {}
 
+    all_worker_runs: list[WorkerRun] = []
+
     if attempt_ids:
         worker_runs = session.scalars(
             select(WorkerRun)
             .where(WorkerRun.task_attempt_id.in_(attempt_ids))
             .order_by(WorkerRun.created_at.asc())
         ).all()
+        all_worker_runs = list(worker_runs)
         for run in worker_runs:
             worker_runs_by_attempt.setdefault(run.task_attempt_id, []).append(run)
 
@@ -361,12 +475,16 @@ def get_task_workspace(
         .order_by(TaskWorkRoomMessage.created_at.asc(), TaskWorkRoomMessage.id.asc())
     ).all()
 
+    now = datetime.now(timezone.utc)
+
     return TaskWorkspaceView(
         task=task_view(task),
         attempts=[
             WorkspaceAttemptBundleView(
                 attempt=attempt_view(attempt),
-                worker_runs=[worker_run_view(run) for run in worker_runs_by_attempt[attempt.id]],
+                worker_runs=[
+                    worker_run_view(run, now=now) for run in worker_runs_by_attempt[attempt.id]
+                ],
                 process_runs=[process_run_view(run) for run in process_runs_by_attempt[attempt.id]],
                 artifacts=[artifact_view(artifact) for artifact in artifacts_by_attempt[attempt.id]],
                 worktree=worktree_view(worktrees_by_attempt[attempt.id])
@@ -375,5 +493,10 @@ def get_task_workspace(
             )
             for attempt in attempts
         ],
+        operations_summary=operations_summary_view(
+            attempts=list(attempts),
+            worker_runs=all_worker_runs,
+            now=now,
+        ),
         work_room_messages=[work_room_message_view(message) for message in work_room_messages],
     )
