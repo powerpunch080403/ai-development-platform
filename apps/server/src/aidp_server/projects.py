@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import platform
+import subprocess
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -28,6 +30,21 @@ class CreateProjectRequest(BaseModel):
         return value
 
 
+class UpdateProjectRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("Project name cannot be blank")
+        return value
+
+
 class RegisterRepositoryRequest(BaseModel):
     repository_path: str = Field(min_length=1, max_length=4096)
     repository_role: RepositoryRole | None = None
@@ -41,6 +58,11 @@ class ProjectView(BaseModel):
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None
+
+
+class ProjectOpenResult(BaseModel):
+    status: str
+    path: str
 
 
 class ProjectRepositoryView(BaseModel):
@@ -150,6 +172,40 @@ def _status_view(
     )
 
 
+def _project_open_path(session: Session, project: Project) -> str:
+    repository = session.scalar(
+        select(ProjectRepository)
+        .where(
+            ProjectRepository.project_id == project.id,
+            ProjectRepository.archived_at.is_(None),
+        )
+        .order_by(ProjectRepository.repository_role == RepositoryRole.PRIMARY, ProjectRepository.created_at)
+    )
+    if repository is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project has no registered repository to open",
+        )
+    return repository.repository_path
+
+
+def _open_file_manager(path: str) -> None:
+    resolved = str(Path(path).resolve())
+    system = platform.system().lower()
+    try:
+        if system == "windows":
+            os.startfile(resolved)  # type: ignore[attr-defined]
+        elif system == "darwin":
+            subprocess.Popen(["open", resolved])
+        else:
+            subprocess.Popen(["xdg-open", resolved])
+    except OSError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not open file manager: {error}",
+        ) from error
+
+
 @router.post("/projects", response_model=ProjectView, status_code=status.HTTP_201_CREATED)
 def create_project(
     request: CreateProjectRequest,
@@ -173,7 +229,7 @@ def list_projects(
 ) -> list[ProjectView]:
     projects = session.scalars(
         select(Project)
-        .where(Project.local_user_id == current.user.id)
+        .where(Project.local_user_id == current.user.id, Project.archived_at.is_(None))
         .order_by(Project.created_at.desc())
     )
     return [_project_view(project) for project in projects]
@@ -186,6 +242,50 @@ def get_project(
     session: Annotated[Session, Depends(get_session)],
 ) -> ProjectView:
     return _project_view(_get_owned_project(session, project_id, current.user.id))
+
+
+@router.patch("/projects/{project_id}", response_model=ProjectView)
+def update_project(
+    project_id: str,
+    request: UpdateProjectRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> ProjectView:
+    project = _get_owned_project(session, project_id, current.user.id)
+    if request.name is not None:
+        project.name = request.name.strip()
+    if request.description is not None:
+        project.description = request.description.strip() if request.description else None
+    project.updated_at = datetime.now(timezone.utc)
+    session.commit()
+    return _project_view(project)
+
+
+@router.delete("/projects/{project_id}", response_model=ProjectView)
+def archive_project(
+    project_id: str,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> ProjectView:
+    project = _get_owned_project(session, project_id, current.user.id)
+    now = datetime.now(timezone.utc)
+    project.status = ProjectStatus.ARCHIVED
+    project.archived_at = now
+    project.updated_at = now
+    session.commit()
+    return _project_view(project)
+
+
+@router.post("/projects/{project_id}/open-in-file-manager", response_model=ProjectOpenResult)
+def open_project_in_file_manager(
+    project_id: str,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> ProjectOpenResult:
+    project = _get_owned_project(session, project_id, current.user.id)
+    path = _project_open_path(session, project)
+    _open_file_manager(path)
+    return ProjectOpenResult(status="opened", path=path)
 
 
 @router.post(
@@ -266,7 +366,7 @@ def list_repositories(
     _get_owned_project(session, project_id, current.user.id)
     repositories = session.scalars(
         select(ProjectRepository)
-        .where(ProjectRepository.project_id == project_id)
+        .where(ProjectRepository.project_id == project_id, ProjectRepository.archived_at.is_(None))
         .order_by(ProjectRepository.created_at)
     )
     return [_repository_view(repository) for repository in repositories]
