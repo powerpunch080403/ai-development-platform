@@ -49,6 +49,23 @@ type FeedItem =
 type ProjectLight = "green" | "yellow" | "red" | "gray";
 
 const PIN_STORAGE_KEY = "aidp.pinnedProjectIds";
+const THREAD_PIN_STORAGE_KEY = "aidp.pinnedConversationIds";
+const DEFAULT_API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_AIDP_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+
+async function conversationRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string | { message?: string } } | null;
+    const detail = typeof body?.detail === "string" ? body.detail : body?.detail?.message;
+    throw new Error(detail ?? "Request failed");
+  }
+  return (await response.json()) as T;
+}
 
 function shortId(id?: string | null) {
   return id ? id.slice(0, 8) : "none";
@@ -155,10 +172,19 @@ export function PersonalModeDashboard() {
   const [activeInspectorTab, setActiveInspectorTab] = useState<"tasks" | "review" | "files" | "details">("tasks");
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null);
+  const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null);
   const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
       return JSON.parse(window.localStorage.getItem(PIN_STORAGE_KEY) ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  });
+  const [pinnedConversationIds, setPinnedConversationIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(window.localStorage.getItem(THREAD_PIN_STORAGE_KEY) ?? "[]") as string[];
     } catch {
       return [];
     }
@@ -197,6 +223,12 @@ export function PersonalModeDashboard() {
       window.localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedProjectIds));
     }
   }, [pinnedProjectIds]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THREAD_PIN_STORAGE_KEY, JSON.stringify(pinnedConversationIds));
+    }
+  }, [pinnedConversationIds]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -313,20 +345,25 @@ export function PersonalModeDashboard() {
     });
   }, [pinnedProjectIds, projects]);
 
+  const pinnedConversations = useMemo(
+    () => conversations.filter((item) => pinnedConversationIds.includes(item.id)),
+    [conversations, pinnedConversationIds],
+  );
+
   const projectConversationMap = useMemo(() => {
     const map = new Map<string, ConversationDto[]>();
     for (const conversation of conversations) {
-      if (!conversation.project_id) continue;
+      if (!conversation.project_id || pinnedConversationIds.includes(conversation.id)) continue;
       const items = map.get(conversation.project_id) ?? [];
       items.push(conversation);
       map.set(conversation.project_id, items);
     }
     return map;
-  }, [conversations]);
+  }, [conversations, pinnedConversationIds]);
 
   const globalConversations = useMemo(
-    () => conversations.filter((item) => !item.project_id).slice(0, 12),
-    [conversations],
+    () => conversations.filter((item) => !item.project_id && !pinnedConversationIds.includes(item.id)).slice(0, 12),
+    [conversations, pinnedConversationIds],
   );
 
   const visibleApprovals = useMemo(
@@ -390,6 +427,41 @@ export function PersonalModeDashboard() {
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  async function handleRenameConversation(conversation: ConversationDto) {
+    const nextTitle = window.prompt("채팅 이름 변경", conversation.title);
+    if (!nextTitle || nextTitle.trim() === conversation.title) return;
+    setActionError(null);
+    try {
+      await conversationRequest<ConversationDto>(`/conversations/${conversation.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: nextTitle.trim() }),
+      });
+      await refreshConversations();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleRemoveConversation(conversation: ConversationDto) {
+    if (!window.confirm(`'${conversation.title}' 채팅을 제거할까요?`)) return;
+    setActionError(null);
+    try {
+      await conversationRequest<ConversationDto>(`/conversations/${conversation.id}`, { method: "DELETE" });
+      setPinnedConversationIds((current) => current.filter((id) => id !== conversation.id));
+      await refreshConversations();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function togglePinnedConversation(conversation: ConversationDto) {
+    setPinnedConversationIds((current) =>
+      current.includes(conversation.id)
+        ? current.filter((id) => id !== conversation.id)
+        : [conversation.id, ...current],
+    );
   }
 
   async function handleRenameProject(project: ProjectDto) {
@@ -466,6 +538,39 @@ export function PersonalModeDashboard() {
     }
   }
 
+  function renderConversationRow(conversation: ConversationDto, variant: "sidebar" | "project" | "pinned") {
+    const isPinned = pinnedConversationIds.includes(conversation.id);
+    const rowClass = variant === "project" ? "project-chat-row" : "sidebar-row";
+    return (
+      <li key={conversation.id} className="conversation-row-shell">
+        <button
+          type="button"
+          className={conversation.id === selectedConversation?.id ? `${rowClass} active` : rowClass}
+          onClick={() => setSelectedConversationId(conversation.id)}
+        >
+          <span>{isPinned ? "★ " : ""}{conversation.title}</span>
+        </button>
+        <div className="conversation-menu-wrap">
+          <button
+            type="button"
+            className="conversation-icon-button"
+            title="채팅 더보기"
+            onClick={() => setOpenConversationMenuId(openConversationMenuId === conversation.id ? null : conversation.id)}
+          >
+            ⋯
+          </button>
+          {openConversationMenuId === conversation.id && (
+            <div className="project-menu conversation-menu">
+              <button type="button" onClick={() => togglePinnedConversation(conversation)}>{isPinned ? "채팅 고정 해제" : "채팅 고정"}</button>
+              <button type="button" onClick={() => void handleRenameConversation(conversation)}>채팅 이름 변경</button>
+              <button type="button" className="danger-action" onClick={() => void handleRemoveConversation(conversation)}>제거하기</button>
+            </div>
+          )}
+        </div>
+      </li>
+    );
+  }
+
   return (
     <div className={isInspectorOpen ? "codex-layout" : "codex-layout inspector-collapsed"}>
       <aside className="codex-sidebar">
@@ -475,6 +580,15 @@ export function PersonalModeDashboard() {
           </button>
           <button type="button" className="rail-button" onClick={() => setActionError("검색은 다음 UI foundation PR에서 Command Palette로 연결합니다.")}>⌕ <span>검색</span></button>
         </nav>
+
+        {pinnedConversations.length > 0 && (
+          <section className="side-group pinned-group">
+            <div className="side-title">고정된 스레드</div>
+            <ul className="sidebar-list">
+              {pinnedConversations.map((conversation) => renderConversationRow(conversation, "pinned"))}
+            </ul>
+          </section>
+        )}
 
         <section className="side-group">
           <div className="side-title">프로젝트</div>
@@ -516,17 +630,7 @@ export function PersonalModeDashboard() {
                   </div>
                   {project.id === selectedProjectId && projectChats.length > 0 && (
                     <ul className="project-chat-list">
-                      {projectChats.map((conversation) => (
-                        <li key={conversation.id}>
-                          <button
-                            type="button"
-                            className={conversation.id === selectedConversation?.id ? "project-chat-row active" : "project-chat-row"}
-                            onClick={() => setSelectedConversationId(conversation.id)}
-                          >
-                            {conversation.title}
-                          </button>
-                        </li>
-                      ))}
+                      {projectChats.map((conversation) => renderConversationRow(conversation, "project"))}
                     </ul>
                   )}
                 </li>
@@ -539,17 +643,7 @@ export function PersonalModeDashboard() {
         <section className="side-group">
           <div className="side-title">채팅</div>
           <ul className="sidebar-list">
-            {globalConversations.map((conversation) => (
-              <li key={conversation.id}>
-                <button
-                  type="button"
-                  className={conversation.id === selectedConversation?.id ? "sidebar-row active" : "sidebar-row"}
-                  onClick={() => setSelectedConversationId(conversation.id)}
-                >
-                  <span>{conversation.title}</span>
-                </button>
-              </li>
-            ))}
+            {globalConversations.map((conversation) => renderConversationRow(conversation, "sidebar"))}
           </ul>
           {!isLoadingConversations && globalConversations.length === 0 && <p className="empty-state">채팅이 없습니다.</p>}
         </section>
