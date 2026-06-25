@@ -213,6 +213,7 @@ def list_conversations(
         .where(
             Conversation.local_user_id == current.user.id,
             Conversation.status == ConversationStatus.ACTIVE,
+            Conversation.archived_at.is_(None),
         )
         .order_by(Conversation.updated_at.desc())
     )
@@ -234,6 +235,8 @@ def update_conversation(
     session: Annotated[Session, Depends(get_session)],
 ) -> ConversationView:
     conversation = owned(session, Conversation, conversation_id, current.user.id)
+    if conversation.archived_at is not None:
+        raise HTTPException(status_code=400, detail="Conversation is archived")
     if request.title is not None:
         conversation.title = request.title.strip()
     conversation.updated_at = utc_now()
