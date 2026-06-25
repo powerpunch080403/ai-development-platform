@@ -103,6 +103,17 @@ textarea {
   gap: 8px;
 }
 
+.pinned-group {
+  padding: 8px;
+  border: 1px solid #e4e4e7;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.pinned-group .side-title {
+  padding: 0 0 2px;
+}
+
 .bottom-group {
   margin-top: auto;
   padding-top: 10px;
@@ -153,6 +164,36 @@ textarea {
   padding: 0 0 3px 24px;
 }
 
+.conversation-row-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 2px;
+  align-items: center;
+}
+
+.conversation-menu-wrap {
+  position: relative;
+}
+
+.conversation-icon-button {
+  min-height: 30px;
+  width: 30px;
+  padding: 0;
+  border: 0;
+  color: #71717a;
+  background: transparent;
+}
+
+.conversation-icon-button:hover:not(:disabled) {
+  color: #18181b;
+  background: #e8e8e8;
+}
+
+.conversation-menu {
+  top: 30px;
+}
+
 .project-row,
 .sidebar-row,
 .project-chat-row,
@@ -183,6 +224,12 @@ textarea {
   font-weight: 600;
 }
 
+.sidebar-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 9px;
+}
+
 .project-row:hover,
 .project-row.active,
 .sidebar-row:hover,
@@ -194,7 +241,9 @@ textarea {
   color: #18181b;
 }
 
-.project-name {
+.project-name,
+.sidebar-row span,
+.project-chat-row span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -271,17 +320,6 @@ textarea {
 
 .project-menu .danger-action {
   color: #991b1b;
-}
-
-.sidebar-row {
-  display: grid;
-  gap: 2px;
-  padding: 8px 9px;
-}
-
-.sidebar-row span,
-.ghost-button {
-  font-weight: 650;
 }
 
 .sidebar-row small {
