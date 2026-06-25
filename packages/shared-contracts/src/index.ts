@@ -220,3 +220,30 @@ export type ExternalCliContextPackageDto = {
   artifact_ids: string[];
   created_at: string;
 };
+
+export type ExternalCliRunRequestDto = {
+  adapter_kind: ExternalCliAdapterKind;
+  task_attempt_id: string;
+  worker_id: string;
+  dry_run?: boolean;
+};
+
+export type ExternalCliRunResultDto = {
+  worker_run_id: string;
+  process_run_id?: string | null;
+  status: string;
+  context_artifact_id?: string | null;
+  report_artifact_id?: string | null;
+  stdout_artifact_id?: string | null;
+  stderr_artifact_id?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+};
+
+export type SettingsSummaryDto = {
+  approval_mode: string;
+  available_approval_modes: string[];
+  allow_danger_local_config: boolean;
+  active_grant_placeholder: string;
+  adapter_summary: string;
+};
