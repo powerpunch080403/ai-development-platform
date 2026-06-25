@@ -23,6 +23,9 @@ from aidp_server.operations import router as operations_router
 from aidp_server.worker_liveness_scheduler import configure_worker_liveness_scheduler
 
 
+CORS_ALLOWED_METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="AI Development Platform", version="0.0.0")
@@ -30,7 +33,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=[settings.web_origin],
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
+        allow_methods=CORS_ALLOWED_METHODS,
         allow_headers=["Content-Type"],
     )
     app.include_router(health_router)
