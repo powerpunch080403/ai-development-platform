@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from aidp_server.cli import create_pairing_code
-from aidp_server.db.models import TaskAttempt
+from aidp_server.db.models import RecordStatus, TaskAttempt, WorkerRun
 from conftest import AppHarness
 
 
@@ -118,6 +118,36 @@ def test_worker_heartbeat_claim_expiry_release_and_revoke(app_harness: AppHarnes
         f"/workers/{w1['id']}/claim", json={"task_attempt_id": attempt["id"]}
     )
     assert claimed.status_code == 200 and claimed.json()["status"] == "running_worker"
+    old_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    with app_harness.session_factory() as s:
+        a = s.get(TaskAttempt, attempt["id"])
+        assert a is not None
+        worker_run = WorkerRun(
+            local_user_id=a.local_user_id,
+            project_id=a.project_id,
+            repository_id=a.repository_id,
+            task_id=a.task_id,
+            task_attempt_id=a.id,
+            worker_id=str(w1["id"]),
+            adapter_kind="manual",
+            status=RecordStatus.RUNNING,
+            started_at=old_time,
+            last_heartbeat_at=old_time,
+            lease_expires_at=old_time,
+            heartbeat_source="test",
+        )
+        s.add(worker_run)
+        s.commit()
+        worker_run_id = worker_run.id
+
+    second_heartbeat = app_harness.client.post(f"/workers/{w1['id']}/heartbeat")
+    assert second_heartbeat.status_code == 200
+    with app_harness.session_factory() as s:
+        worker_run = s.get(WorkerRun, worker_run_id)
+        assert worker_run is not None
+        assert worker_run.last_heartbeat_at is not None
+        assert worker_run.lease_expires_at is not None
+        assert worker_run.heartbeat_source == "worker_heartbeat"
     assert (
         app_harness.client.post(
             f"/workers/{w2['id']}/claim", json={"task_attempt_id": attempt["id"]}

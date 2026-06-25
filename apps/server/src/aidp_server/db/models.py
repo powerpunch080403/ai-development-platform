@@ -807,6 +807,9 @@ class WorkerRun(TimestampMixin, Base):
     status: Mapped[RecordStatus] = mapped_column(
         enum_column(RecordStatus), nullable=False, default=RecordStatus.CREATED
     )
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_source: Mapped[str | None] = mapped_column(String(100))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

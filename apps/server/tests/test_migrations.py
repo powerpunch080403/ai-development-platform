@@ -18,7 +18,7 @@ def _alembic_config() -> Config:
 def test_alembic_has_single_head() -> None:
     script = ScriptDirectory.from_config(_alembic_config())
 
-    assert script.get_heads() == ["20260624_0013"]
+    assert script.get_heads() == ["20260624_0014"]
 
 
 def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(
@@ -40,6 +40,9 @@ def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(
             table_names = set(inspector.get_table_names())
             task_columns = {column["name"] for column in inspector.get_columns("tasks")}
             tool_call_columns = {column["name"] for column in inspector.get_columns("tool_calls")}
+            worker_run_columns = {
+                column["name"] for column in inspector.get_columns("worker_runs")
+            }
         finally:
             engine.dispose()
 
@@ -69,6 +72,11 @@ def test_initial_migration_upgrades_and_downgrades_temporary_sqlite(
         }.issubset(table_names)
         assert "write_scope_json" in task_columns
         assert "result_json" in tool_call_columns
+        assert {
+            "last_heartbeat_at",
+            "lease_expires_at",
+            "heartbeat_source",
+        }.issubset(worker_run_columns)
 
         command.downgrade(alembic_config, "base")
     finally:

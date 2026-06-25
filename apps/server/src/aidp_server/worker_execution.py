@@ -18,6 +18,7 @@ from aidp_server.db.models import (
     utc_now,
 )
 from aidp_server.db.session import get_session_factory
+from aidp_server.worker_liveness import mark_worker_run_running_with_lease
 
 
 class WorkerExecutionService(Protocol):
@@ -55,7 +56,11 @@ class LocalBackgroundWorkerExecutionService:
 
         from aidp_server.audit import record_audit_event
 
-        worker_run.status = RecordStatus.RUNNING
+        mark_worker_run_running_with_lease(
+            worker_run,
+            timeout_seconds=settings.worker_run_stale_timeout_seconds,
+            heartbeat_source="agy_handoff",
+        )
         task_attempt.status = TaskAttemptStatus.RUNNING_WORKER
         session.flush()
 

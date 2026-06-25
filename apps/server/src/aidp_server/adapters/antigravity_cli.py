@@ -33,6 +33,7 @@ from aidp_server.work_room import (
     WorkRoomMessageSender,
     WorkRoomMessageType,
 )
+from aidp_server.worker_liveness import mark_worker_run_running_with_lease
 from aidp_server.worktrees import apply_worktree_result
 
 
@@ -236,6 +237,13 @@ async def run_existing_agy_worker_run(
     )
 
     from aidp_server.process_runtime import get_process_runtime_provider
+
+    mark_worker_run_running_with_lease(
+        worker_run,
+        timeout_seconds=settings.worker_run_stale_timeout_seconds,
+        heartbeat_source="antigravity_cli",
+    )
+    session.flush()
 
     provider = get_process_runtime_provider()
     process_run = await provider.run(
