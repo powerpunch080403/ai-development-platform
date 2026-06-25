@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 
 from aidp_server.audit import record_audit_event
 from aidp_server.auth import CurrentAuth
+from aidp_server.attempt_retry_policy import (
+    ExplicitRetryPolicyError,
+    ensure_explicit_retry_allowed,
+)
 from aidp_server.db.models import Task, TaskAttempt, TaskAttemptStatus
 from aidp_server.db.session import get_session
 from aidp_server.state_transitions import StateTransitionError, assert_task_attempt_transition
@@ -235,8 +239,10 @@ def request_follow_up(
 ) -> FollowUpAttemptResponse:
     source_attempt = _owned_attempt(session, attempt_id, current.user.id)
     task = _task_for_attempt(session, source_attempt)
-    if source_attempt.status not in FOLLOW_UP_SOURCE_STATUSES:
-        raise HTTPException(status_code=409, detail="Attempt cannot be used for follow-up")
+    try:
+        ensure_explicit_retry_allowed(session, task=task, source_attempt=source_attempt)
+    except ExplicitRetryPolicyError as error:
+        raise HTTPException(status_code=409, detail=error.detail()) from error
 
     now = datetime.now(timezone.utc)
     if source_attempt.status in REVIEWABLE_STATUSES:
@@ -271,6 +277,8 @@ def request_follow_up(
         metadata={
             "action": "follow_up",
             "source_attempt_id": source_attempt.id,
+            "explicit_retry": True,
+            "automatic_retry": False,
         },
     )
     _audit(
@@ -284,6 +292,8 @@ def request_follow_up(
             "source_attempt_id": source_attempt.id,
             "follow_up_attempt_id": follow_up_attempt.id,
             "message_id": work_room_message.id,
+            "explicit_retry": True,
+            "automatic_retry": False,
         },
     )
     session.commit()

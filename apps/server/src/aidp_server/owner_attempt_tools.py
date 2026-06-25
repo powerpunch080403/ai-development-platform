@@ -4,6 +4,10 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from aidp_server.attempt_retry_policy import (
+    ExplicitRetryPolicyError,
+    ensure_explicit_retry_allowed,
+)
 from aidp_server.db.models import Task, TaskAttempt, TaskAttemptStatus, ToolCall
 from aidp_server.state_transitions import StateTransitionError, assert_task_attempt_transition
 from aidp_server.work_room import (
@@ -114,6 +118,8 @@ def accept_attempt(session: Session, tool_call: ToolCall) -> dict[str, Any]:
         "task_attempt_id": attempt.id,
         "status": attempt.status.value,
         "work_room_message_id": message.id,
+        "explicit_retry": True,
+        "automatic_retry": False,
     }
 
 
@@ -157,8 +163,10 @@ def follow_up_attempt(session: Session, tool_call: ToolCall) -> dict[str, Any]:
     task = _task(session, tool_call, source)
     if task is None:
         return {"error": tool_call.error_code}
-    if source.status not in FOLLOW_UP_SOURCES:
-        return _fail(tool_call, "attempt_not_follow_up_source", "Attempt cannot be used for follow-up")
+    try:
+        ensure_explicit_retry_allowed(session, task=task, source_attempt=source)
+    except ExplicitRetryPolicyError as error:
+        return _fail(tool_call, error.code, error.message)
 
     feedback = (tool_call.arguments_json or {}).get("feedback")
     if not isinstance(feedback, str) or not feedback:
@@ -189,7 +197,12 @@ def follow_up_attempt(session: Session, tool_call: ToolCall) -> dict[str, Any]:
         attempt=follow_up,
         message_type=WorkRoomMessageType.OWNER_FEEDBACK,
         content=feedback,
-        metadata={"action": "follow_up", "source_attempt_id": source.id},
+        metadata={
+            "action": "follow_up",
+            "source_attempt_id": source.id,
+            "explicit_retry": True,
+            "automatic_retry": False,
+        },
     )
     return {
         "task_id": task.id,
