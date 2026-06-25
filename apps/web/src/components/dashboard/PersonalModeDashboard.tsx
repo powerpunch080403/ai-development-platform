@@ -80,7 +80,6 @@ function statusLabel(status?: string | null) {
     case "archived":
       return "제거됨";
     case "created":
-      return "대기 중";
     case "queued":
       return "대기 중";
     case "running":
@@ -266,6 +265,7 @@ export function PersonalModeDashboard() {
   const selectedConversation =
     conversations.find((item) => item.id === selectedConversationId) ??
     (selectedProjectId ? conversations.find((item) => item.project_id === selectedProjectId) : undefined) ??
+    conversations.find((item) => !item.project_id) ??
     conversations[0];
 
   useEffect(() => {
@@ -313,13 +313,19 @@ export function PersonalModeDashboard() {
     });
   }, [pinnedProjectIds, projects]);
 
-  const projectConversations = useMemo(() => {
-    if (!selectedProjectId) return conversations;
-    return conversations.filter((item) => item.project_id === selectedProjectId || !item.project_id);
-  }, [conversations, selectedProjectId]);
+  const projectConversationMap = useMemo(() => {
+    const map = new Map<string, ConversationDto[]>();
+    for (const conversation of conversations) {
+      if (!conversation.project_id) continue;
+      const items = map.get(conversation.project_id) ?? [];
+      items.push(conversation);
+      map.set(conversation.project_id, items);
+    }
+    return map;
+  }, [conversations]);
 
   const globalConversations = useMemo(
-    () => conversations.filter((item) => !item.project_id).slice(0, 8),
+    () => conversations.filter((item) => !item.project_id).slice(0, 12),
     [conversations],
   );
 
@@ -360,12 +366,23 @@ export function PersonalModeDashboard() {
     return "green";
   }
 
+  async function handleGeneralChat() {
+    setActionError(null);
+    try {
+      const conversation = await createConversation({ title: "새 채팅" });
+      await refreshConversations();
+      setSelectedConversationId(conversation.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   async function handleProjectChat(project: ProjectDto) {
     setActionError(null);
     try {
       const conversation = await createConversation({
         project_id: project.id,
-        title: `${project.name} 새 채팅`,
+        title: `${project.name} 채팅`,
       });
       await refreshConversations();
       setSelectedProjectId(project.id);
@@ -430,7 +447,7 @@ export function PersonalModeDashboard() {
         draftMessage.trim().slice(0, 50) + (draftMessage.trim().length > 50 ? "..." : "");
       const run = await createAgentRun({
         conversation_id: selectedConversation.id,
-        project_id: selectedProjectId || undefined,
+        project_id: selectedConversation.project_id || undefined,
         purpose,
         input_message_id: message.id,
       });
@@ -453,7 +470,7 @@ export function PersonalModeDashboard() {
     <div className={isInspectorOpen ? "codex-layout" : "codex-layout inspector-collapsed"}>
       <aside className="codex-sidebar">
         <nav className="app-rail" aria-label="앱 탐색">
-          <button type="button" className="rail-button" onClick={() => selectedProject && void handleProjectChat(selectedProject)}>
+          <button type="button" className="rail-button" onClick={() => void handleGeneralChat()}>
             ✎ <span>새 채팅</span>
           </button>
           <button type="button" className="rail-button" onClick={() => setActionError("검색은 다음 UI foundation PR에서 Command Palette로 연결합니다.")}>⌕ <span>검색</span></button>
@@ -465,58 +482,58 @@ export function PersonalModeDashboard() {
             {sortedProjects.map((project) => {
               const light = getProjectLight(project);
               const isPinned = pinnedProjectIds.includes(project.id);
+              const projectChats = projectConversationMap.get(project.id) ?? [];
               return (
-                <li key={project.id} className="project-row-shell">
-                  <button
-                    type="button"
-                    className={project.id === selectedProjectId ? "project-row active" : "project-row"}
-                    onClick={() => setSelectedProjectId(project.id)}
-                  >
-                    <span className={`project-light ${light}`} title={projectLightLabel(light)} />
-                    <span className="project-name">{isPinned ? "★ " : ""}{project.name}</span>
-                  </button>
-                  <button type="button" className="project-icon-button" title="프로젝트 새 채팅" onClick={() => void handleProjectChat(project)}>＋</button>
-                  <div className="project-menu-wrap">
+                <li key={project.id} className="project-stack">
+                  <div className="project-row-shell">
                     <button
                       type="button"
-                      className="project-icon-button"
-                      title="더보기"
-                      onClick={() => setOpenProjectMenuId(openProjectMenuId === project.id ? null : project.id)}
+                      className={project.id === selectedProjectId ? "project-row active" : "project-row"}
+                      onClick={() => setSelectedProjectId(project.id)}
                     >
-                      ⋯
+                      <span className={`project-light ${light}`} title={projectLightLabel(light)} />
+                      <span className="project-name">{isPinned ? "★ " : ""}{project.name}</span>
                     </button>
-                    {openProjectMenuId === project.id && (
-                      <div className="project-menu">
-                        <button type="button" onClick={() => togglePinnedProject(project)}>{isPinned ? "프로젝트 고정 해제" : "프로젝트 고정"}</button>
-                        <button type="button" onClick={() => void handleOpenProject(project)}>탐색기에서 열기</button>
-                        <button type="button" onClick={() => void handleRenameProject(project)}>프로젝트 이름 변경</button>
-                        <button type="button" className="danger-action" onClick={() => void handleRemoveProject(project)}>제거하기</button>
-                      </div>
-                    )}
+                    <button type="button" className="project-icon-button" title="프로젝트 새 채팅" onClick={() => void handleProjectChat(project)}>＋</button>
+                    <div className="project-menu-wrap">
+                      <button
+                        type="button"
+                        className="project-icon-button"
+                        title="더보기"
+                        onClick={() => setOpenProjectMenuId(openProjectMenuId === project.id ? null : project.id)}
+                      >
+                        ⋯
+                      </button>
+                      {openProjectMenuId === project.id && (
+                        <div className="project-menu">
+                          <button type="button" onClick={() => togglePinnedProject(project)}>{isPinned ? "프로젝트 고정 해제" : "프로젝트 고정"}</button>
+                          <button type="button" onClick={() => void handleOpenProject(project)}>탐색기에서 열기</button>
+                          <button type="button" onClick={() => void handleRenameProject(project)}>프로젝트 이름 변경</button>
+                          <button type="button" className="danger-action" onClick={() => void handleRemoveProject(project)}>제거하기</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
+                  {project.id === selectedProjectId && projectChats.length > 0 && (
+                    <ul className="project-chat-list">
+                      {projectChats.map((conversation) => (
+                        <li key={conversation.id}>
+                          <button
+                            type="button"
+                            className={conversation.id === selectedConversation?.id ? "project-chat-row active" : "project-chat-row"}
+                            onClick={() => setSelectedConversationId(conversation.id)}
+                          >
+                            {conversation.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}
           </ul>
           {projects.length === 0 && <p className="empty-state">프로젝트가 없습니다.</p>}
-        </section>
-
-        <section className="side-group">
-          <div className="side-title">프로젝트 채팅</div>
-          <ul className="sidebar-list">
-            {projectConversations.map((conversation) => (
-              <li key={conversation.id}>
-                <button
-                  type="button"
-                  className={conversation.id === selectedConversation?.id ? "sidebar-row active" : "sidebar-row"}
-                  onClick={() => setSelectedConversationId(conversation.id)}
-                >
-                  <span>{conversation.title}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {!isLoadingConversations && projectConversations.length === 0 && <p className="empty-state">프로젝트 채팅이 없습니다.</p>}
         </section>
 
         <section className="side-group">
@@ -534,7 +551,7 @@ export function PersonalModeDashboard() {
               </li>
             ))}
           </ul>
-          {!isLoadingConversations && globalConversations.length === 0 && <p className="empty-state">일반 채팅이 없습니다.</p>}
+          {!isLoadingConversations && globalConversations.length === 0 && <p className="empty-state">채팅이 없습니다.</p>}
         </section>
 
         <section className="side-group bottom-group">
