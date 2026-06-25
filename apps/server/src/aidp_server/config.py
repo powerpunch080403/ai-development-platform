@@ -28,6 +28,8 @@ class Settings(BaseSettings):
 
     allow_owner_agy_worker_run: bool = False
     worker_run_stale_timeout_seconds: int = 3600
+    enable_worker_liveness_scheduler: bool = False
+    worker_liveness_scheduler_interval_seconds: int = 60
 
     allow_real_codex_owner_provider: bool = False
     codex_cli_command: str = "codex"
