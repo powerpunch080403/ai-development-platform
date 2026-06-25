@@ -19,6 +19,7 @@ from aidp_server.system import router as system_router
 from aidp_server.approval_routes import router as approvals_router
 from aidp_server.external_cli_adapters import router as external_cli_adapters_router
 from aidp_server.settings import router as settings_router
+from aidp_server.operations import router as operations_router
 from aidp_server.worker_liveness_scheduler import configure_worker_liveness_scheduler
 
 
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(approvals_router)
     app.include_router(external_cli_adapters_router)
     app.include_router(settings_router)
+    app.include_router(operations_router)
     configure_worker_liveness_scheduler(app, settings)
     return app
 
