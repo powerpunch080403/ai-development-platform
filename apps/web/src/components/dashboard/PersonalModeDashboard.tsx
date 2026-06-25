@@ -1,54 +1,79 @@
-import { useEffect, useState } from "react";
-import {
-  ProjectDto,
-  ProjectRepositoryDto,
-  ConversationDto,
-  TaskDto,
-  TaskAttemptDto,
-  WorkerRunDto,
-  GitWorktreeDto,
-  SettingsSummaryDto,
-  WorktreeDiffDto,
-  ApprovalRequestDto,
-  ArtifactRefDto,
-  MessageDto,
+﻿import { useEffect, useMemo, useState } from "react";
+import type {
   AgentRunDto,
   AgentRunStepDto,
+  ApprovalRequestDto,
+  ArtifactRefDto,
+  ConversationDto,
+  GitWorktreeDto,
+  MessageDto,
+  ProjectDto,
+  ProjectRepositoryDto,
+  SettingsSummaryDto,
+  TaskAttemptDto,
+  TaskDto,
   ToolCallDto,
+  WorkerRunDto,
+  WorktreeDiffDto,
 } from "@aidp/shared-contracts";
 import {
-  listProjects,
-  listRepositories,
-  listConversations,
-  getSettingsSummary,
-  listTasks,
-  listAttempts,
-  listWorkerRuns,
-  getWorktree,
-  getWorktreeDiff,
-  listArtifacts,
-  listApprovalRequests,
-  listMessages,
-  listAgentRuns,
-  listAgentRunSteps,
-  listToolCalls,
   appendMessage,
   createAgentRun,
-  getTaskTrace,
-  TaskTraceDto,
+  getSettingsSummary,
+  getWorktree,
+  getWorktreeDiff,
+  listAgentRuns,
+  listAgentRunSteps,
+  listApprovalRequests,
+  listAttempts,
+  listArtifacts,
+  listConversations,
+  listMessages,
+  listProjects,
+  listRepositories,
+  listTasks,
+  listToolCalls,
+  listWorkerRuns,
 } from "../../api/client";
+
+type FeedItem =
+  | { kind: "message"; time: number; item: MessageDto }
+  | { kind: "step"; time: number; item: AgentRunStepDto }
+  | { kind: "tool"; time: number; item: ToolCallDto };
+
+function shortId(id?: string | null) {
+  return id ? id.slice(0, 8) : "none";
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "unknown";
+  return new Date(value).toLocaleString();
+}
+
+function statusClass(status?: string | null) {
+  if (!status) return "status-pill";
+  if (["completed", "merged", "cleaned", "approved", "success"].includes(status)) {
+    return "status-pill success";
+  }
+  if (["failed", "worker_failed", "rejected", "expired", "error"].includes(status)) {
+    return "status-pill danger";
+  }
+  if (["running", "running_worker", "waiting_for_review", "reviewing"].includes(status)) {
+    return "status-pill active";
+  }
+  return "status-pill";
+}
 
 export function PersonalModeDashboard() {
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [repositories, setRepositories] = useState<ProjectRepositoryDto[]>([]);
   const [conversations, setConversations] = useState<ConversationDto[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [settings, setSettings] = useState<SettingsSummaryDto | null>(null);
 
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [taskTrace, setTaskTrace] = useState<TaskTraceDto | null>(null);
-
   const [attempts, setAttempts] = useState<TaskAttemptDto[]>([]);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
 
@@ -56,484 +81,508 @@ export function PersonalModeDashboard() {
   const [worktree, setWorktree] = useState<GitWorktreeDto | null>(null);
   const [diff, setDiff] = useState<WorktreeDiffDto | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactRefDto[]>([]);
-
   const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([]);
 
-  const [activeTab, setActiveTab] = useState<"diff" | "artifacts" | "logs">("diff");
-
-  // Owner Conversation states
   const [agentRuns, setAgentRuns] = useState<AgentRunDto[]>([]);
   const [selectedAgentRunId, setSelectedAgentRunId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageDto[]>([]);
   const [agentRunSteps, setAgentRunSteps] = useState<AgentRunStepDto[]>([]);
   const [toolCalls, setToolCalls] = useState<ToolCallDto[]>([]);
 
+  const [activeInspectorTab, setActiveInspectorTab] = useState<"review" | "changes" | "status">("review");
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
-
-  // Send message states
   const [draftMessage, setDraftMessage] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  // Initial fetch
   useEffect(() => {
     getSettingsSummary().then(setSettings).catch(console.error);
-    listProjects().then((ps) => {
-      setProjects(ps);
-      if (ps.length > 0) setSelectedProjectId(ps[0].id);
-    }).catch(console.error);
+    listProjects()
+      .then((items) => {
+        setProjects(items);
+        if (items.length > 0) setSelectedProjectId(items[0].id);
+      })
+      .catch(console.error);
+
     listConversations()
-      .then(setConversations)
+      .then((items) => {
+        setConversations(items);
+        if (items.length > 0) setSelectedConversationId(items[0].id);
+      })
       .catch(console.error)
       .finally(() => setIsLoadingConversations(false));
+
     listApprovalRequests().then(setApprovals).catch(console.error);
   }, []);
 
-  // When project changes
   useEffect(() => {
-    if (selectedProjectId) {
-      listRepositories(selectedProjectId).then(setRepositories).catch(console.error);
-      listTasks(selectedProjectId).then(ts => {
-        setTasks(ts);
-        if (ts.length > 0) {
-          setSelectedTaskId(ts[0].id);
-        } else {
-          setSelectedTaskId(null);
-        }
-      }).catch(console.error);
-    } else {
+    if (!selectedProjectId) {
       setRepositories([]);
       setTasks([]);
       setSelectedTaskId(null);
+      return;
     }
+
+    listRepositories(selectedProjectId).then(setRepositories).catch(console.error);
+    listTasks(selectedProjectId)
+      .then((items) => {
+        setTasks(items);
+        setSelectedTaskId((current) =>
+          current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null,
+        );
+      })
+      .catch(console.error);
   }, [selectedProjectId]);
 
-  // When task changes
   useEffect(() => {
-    if (selectedTaskId) {
-      listAttempts(selectedTaskId).then(ats => {
-        setAttempts(ats);
-        if (ats.length > 0) {
-          setSelectedAttemptId(ats[ats.length - 1].id); // default to latest
-        } else {
-          setSelectedAttemptId(null);
-        }
-      }).catch(console.error);
-
-      getTaskTrace(selectedTaskId).then(setTaskTrace).catch(console.error);
-    } else {
+    if (!selectedTaskId) {
       setAttempts([]);
       setSelectedAttemptId(null);
-      setTaskTrace(null);
+      return;
     }
+
+    listAttempts(selectedTaskId)
+      .then((items) => {
+        setAttempts(items);
+        setSelectedAttemptId((current) =>
+          current && items.some((item) => item.id === current)
+            ? current
+            : items.at(-1)?.id ?? null,
+        );
+      })
+      .catch(console.error);
   }, [selectedTaskId]);
 
-  // When attempt changes
   useEffect(() => {
-    if (selectedAttemptId) {
-      listWorkerRuns(selectedAttemptId).then(setWorkerRuns).catch(console.error);
-      listArtifacts(selectedAttemptId).then(setArtifacts).catch(console.error);
-      getWorktree(selectedAttemptId).then(wt => {
-        setWorktree(wt);
-        if (wt) {
-          getWorktreeDiff(wt.id).then(setDiff).catch(console.error);
-        } else {
-          setDiff(null);
-        }
-      }).catch(() => {
-        setWorktree(null);
-        setDiff(null);
-      });
-    } else {
+    if (!selectedAttemptId) {
       setWorkerRuns([]);
       setArtifacts([]);
       setWorktree(null);
       setDiff(null);
+      return;
     }
+
+    listWorkerRuns(selectedAttemptId).then(setWorkerRuns).catch(console.error);
+    listArtifacts(selectedAttemptId).then(setArtifacts).catch(console.error);
+    getWorktree(selectedAttemptId)
+      .then((item) => {
+        setWorktree(item);
+        if (item) {
+          getWorktreeDiff(item.id).then(setDiff).catch(() => setDiff(null));
+        } else {
+          setDiff(null);
+        }
+      })
+      .catch(() => {
+        setWorktree(null);
+        setDiff(null);
+      });
   }, [selectedAttemptId]);
 
-  // Owner Conversation effects
-  const selectedConversation = selectedProjectId
-    ? conversations.find(c => c.project_id === selectedProjectId) || conversations[0]
-    : conversations[0];
+  const selectedConversation =
+    conversations.find((item) => item.id === selectedConversationId) ??
+    (selectedProjectId ? conversations.find((item) => item.project_id === selectedProjectId) : undefined) ??
+    conversations[0];
 
   useEffect(() => {
-    if (selectedConversation) {
-      listAgentRuns(selectedConversation.id).then(runs => {
-        setAgentRuns(runs);
-        if (runs.length > 0) setSelectedAgentRunId(runs[0].id);
-        else setSelectedAgentRunId(null);
-      }).catch(console.error);
-      listMessages(selectedConversation.id).then(setMessages).catch(console.error);
-    } else {
-      setAgentRuns([]);
+    if (!selectedConversation) {
       setMessages([]);
+      setAgentRuns([]);
       setSelectedAgentRunId(null);
+      return;
     }
+
+    listMessages(selectedConversation.id).then(setMessages).catch(console.error);
+    listAgentRuns(selectedConversation.id)
+      .then((items) => {
+        setAgentRuns(items);
+        setSelectedAgentRunId((current) =>
+          current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null,
+        );
+      })
+      .catch(console.error);
   }, [selectedConversation?.id]);
 
   useEffect(() => {
-    if (selectedAgentRunId) {
-      listAgentRunSteps(selectedAgentRunId).then(setAgentRunSteps).catch(console.error);
-      listToolCalls(selectedAgentRunId).then(setToolCalls).catch(console.error);
-    } else {
+    if (!selectedAgentRunId) {
       setAgentRunSteps([]);
       setToolCalls([]);
+      return;
     }
+
+    listAgentRunSteps(selectedAgentRunId).then(setAgentRunSteps).catch(console.error);
+    listToolCalls(selectedAgentRunId).then(setToolCalls).catch(console.error);
   }, [selectedAgentRunId]);
 
-  const handleSendMessage = async () => {
+  const selectedProject = projects.find((item) => item.id === selectedProjectId);
+  const selectedTask = tasks.find((item) => item.id === selectedTaskId);
+  const selectedAttempt = attempts.find((item) => item.id === selectedAttemptId);
+  const latestWorkerRun = workerRuns.at(-1);
+
+  const projectConversations = useMemo(() => {
+    if (!selectedProjectId) return conversations;
+    return conversations.filter((item) => item.project_id === selectedProjectId || !item.project_id);
+  }, [conversations, selectedProjectId]);
+
+  const feedItems = useMemo<FeedItem[]>(
+    () =>
+      [
+        ...messages.map((item) => ({
+          kind: "message" as const,
+          time: new Date(item.created_at).getTime(),
+          item,
+        })),
+        ...agentRunSteps.map((item) => ({
+          kind: "step" as const,
+          time: new Date(item.created_at).getTime(),
+          item,
+        })),
+        ...toolCalls.map((item) => ({
+          kind: "tool" as const,
+          time: new Date(item.created_at).getTime(),
+          item,
+        })),
+      ].sort((a, b) => a.time - b.time),
+    [agentRunSteps, messages, toolCalls],
+  );
+
+  async function handleSendMessage() {
     if (!draftMessage.trim() || !selectedConversation) return;
+
     setIsSendingMessage(true);
     setSendError(null);
     try {
-      const msg = await appendMessage(selectedConversation.id, {
+      const message = await appendMessage(selectedConversation.id, {
         role: "user",
         content: draftMessage.trim(),
         content_type: "text",
       });
-      const purpose = draftMessage.trim().substring(0, 50) + (draftMessage.trim().length > 50 ? "..." : "");
+      const purpose =
+        draftMessage.trim().slice(0, 50) + (draftMessage.trim().length > 50 ? "..." : "");
       const run = await createAgentRun({
         conversation_id: selectedConversation.id,
         project_id: selectedProjectId || undefined,
-        purpose: purpose,
-        input_message_id: msg.id,
+        purpose,
+        input_message_id: message.id,
       });
 
       setDraftMessage("");
-      const msgs = await listMessages(selectedConversation.id);
-      setMessages(msgs);
-      const runs = await listAgentRuns(selectedConversation.id);
-      setAgentRuns(runs);
+      setMessages(await listMessages(selectedConversation.id));
+      setAgentRuns(await listAgentRuns(selectedConversation.id));
       setSelectedAgentRunId(run.id);
-    } catch (err: any) {
-      setSendError(err.message || String(err));
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : String(error));
     } finally {
       setIsSendingMessage(false);
     }
-  };
-
-  const selectedTask = tasks.find(t => t.id === selectedTaskId);
-  const selectedAttempt = attempts.find(a => a.id === selectedAttemptId);
-
-  // Combine feed
-  const feedItems = [
-    ...messages.map(m => ({ type: 'message' as const, time: new Date(m.created_at).getTime(), data: m })),
-    ...agentRunSteps.map(s => ({ type: 'step' as const, time: new Date(s.created_at).getTime(), data: s })),
-    ...toolCalls.map(t => ({ type: 'tool' as const, time: new Date(t.created_at).getTime(), data: t })),
-  ].sort((a, b) => a.time - b.time);
+  }
 
   return (
-    <div className="dashboard-layout">
-      {/* LEFT SIDEBAR */}
-      <aside className="dashboard-sidebar">
-        <div className="sidebar-section">
-          <h3>Project & Repository</h3>
+    <div className="codex-layout">
+      <aside className="codex-sidebar">
+        <div className="sidebar-actions">
+          <button type="button" className="ghost-button" disabled>＋ 새 채팅</button>
+          <button type="button" className="ghost-button" disabled>⌕ 검색</button>
+        </div>
+
+        <section className="side-group">
+          <div className="side-title">프로젝트</div>
           <select
             value={selectedProjectId || ""}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
+            onChange={(event) => setSelectedProjectId(event.target.value || null)}
           >
-            <option value="">Select a project...</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+            <option value="">프로젝트 선택</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>{project.name}</option>
             ))}
           </select>
-          {repositories.length > 0 && (
-            <div className="repo-list">
-              <h4>Repositories</h4>
-              <ul>
-                {repositories.map((r) => (
-                  <li key={r.id}>
-                    <code>{r.repository_path}</code>
+          {selectedProject ? (
+            <p className="side-note">{selectedProject.description || "설명 없음"}</p>
+          ) : (
+            <p className="empty-state">프로젝트가 없습니다.</p>
+          )}
+        </section>
+
+        <section className="side-group">
+          <div className="side-title">채팅</div>
+          <ul className="sidebar-list">
+            {projectConversations.map((conversation) => (
+              <li key={conversation.id}>
+                <button
+                  type="button"
+                  className={
+                    conversation.id === selectedConversation?.id
+                      ? "sidebar-row active"
+                      : "sidebar-row"
+                  }
+                  onClick={() => setSelectedConversationId(conversation.id)}
+                >
+                  <span>{conversation.title}</span>
+                  <small>{conversation.status}</small>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {!isLoadingConversations && projectConversations.length === 0 && (
+            <p className="empty-state">채팅이 없습니다.</p>
+          )}
+        </section>
+
+        <section className="side-group">
+          <div className="side-title">워커-오너 룸</div>
+          <ul className="sidebar-list">
+            {tasks.map((task) => (
+              <li key={task.id}>
+                <button
+                  type="button"
+                  className={task.id === selectedTaskId ? "sidebar-row active" : "sidebar-row"}
+                  onClick={() => setSelectedTaskId(task.id)}
+                >
+                  <span>{task.title}</span>
+                  <small>{task.status}</small>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {tasks.length === 0 && <p className="empty-state">작업 룸이 없습니다.</p>}
+        </section>
+
+        <section className="side-group">
+          <div className="side-title">저장소</div>
+          <ul className="repo-compact-list">
+            {repositories.map((repository) => (
+              <li key={repository.id}>
+                <code>{repository.repository_name}</code>
+                <small>{repository.is_dirty ? "dirty" : "clean"} · {repository.current_branch ?? "detached"}</small>
+              </li>
+            ))}
+          </ul>
+          {repositories.length === 0 && <p className="empty-state">등록된 저장소가 없습니다.</p>}
+        </section>
+
+        <section className="side-group bottom-group">
+          <div className="side-title">설정</div>
+          <p className="settings-line">승인: {settings?.approval_mode ?? "unknown"}</p>
+          <p className="settings-line">어댑터: {settings?.adapter_summary ?? "unknown"}</p>
+        </section>
+      </aside>
+
+      <main className="codex-chat">
+        <header className="chat-topbar">
+          <div>
+            <h2>{selectedConversation?.title ?? "대화 없음"}</h2>
+            <p>
+              {selectedProject?.name ?? "프로젝트 미선택"}
+              {selectedConversation ? ` · ${selectedConversation.status}` : ""}
+            </p>
+          </div>
+          <div className="chat-actions">
+            <select
+              value={selectedAgentRunId || ""}
+              onChange={(event) => setSelectedAgentRunId(event.target.value || null)}
+            >
+              <option value="">실행 선택</option>
+              {agentRuns.map((run) => (
+                <option key={run.id} value={run.id}>
+                  {shortId(run.id)} · {run.status} · {run.purpose}
+                </option>
+              ))}
+            </select>
+          </div>
+        </header>
+
+        <section className="chat-feed">
+          {isLoadingConversations ? (
+            <p className="empty-state">대화를 불러오는 중...</p>
+          ) : feedItems.length > 0 ? (
+            feedItems.map((feedItem) => {
+              if (feedItem.kind === "message") {
+                const message = feedItem.item;
+                return (
+                  <article
+                    key={`message-${message.id}`}
+                    className={message.role === "user" ? "chat-bubble user" : "chat-bubble assistant"}
+                  >
+                    <div className="bubble-label">{message.role}</div>
+                    <pre>{message.content}</pre>
+                  </article>
+                );
+              }
+
+              if (feedItem.kind === "step") {
+                const step = feedItem.item;
+                return (
+                  <article key={`step-${step.id}`} className="event-card step">
+                    <strong>{step.step_type}</strong>
+                    <span className={statusClass(step.status)}>{step.status}</span>
+                    <p>{step.summary ?? "No summary"}</p>
+                  </article>
+                );
+              }
+
+              const tool = feedItem.item;
+              return (
+                <article key={`tool-${tool.id}`} className="event-card tool">
+                  <strong>{tool.tool_name}</strong>
+                  <span className={statusClass(tool.status)}>{tool.status}</span>
+                  <pre>{JSON.stringify(tool.arguments_json ?? {}, null, 2)}</pre>
+                </article>
+              );
+            })
+          ) : (
+            <div className="chat-empty">
+              <h2>작업을 시작하세요</h2>
+              <p>왼쪽에서 프로젝트와 채팅을 고르면 Owner 대화와 실행 기록이 여기에 표시됩니다.</p>
+            </div>
+          )}
+        </section>
+
+        <footer className="composer">
+          <button type="button" className="icon-button" disabled>＋</button>
+          <input
+            type="text"
+            value={draftMessage}
+            onChange={(event) => setDraftMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void handleSendMessage();
+            }}
+            placeholder="후속 변경 사항을 부탁하세요"
+            disabled={isSendingMessage || !selectedConversation}
+          />
+          <button
+            type="button"
+            onClick={handleSendMessage}
+            disabled={!draftMessage.trim() || isSendingMessage || !selectedConversation}
+          >
+            {isSendingMessage ? "전송 중" : "보내기"}
+          </button>
+        </footer>
+        {sendError && <p className="error">전송 실패: {sendError}</p>}
+      </main>
+
+      <aside className="codex-review">
+        <header className="review-topbar">
+          <button
+            type="button"
+            className={activeInspectorTab === "review" ? "tab-button active" : "tab-button"}
+            onClick={() => setActiveInspectorTab("review")}
+          >
+            검토
+          </button>
+          <button
+            type="button"
+            className={activeInspectorTab === "changes" ? "tab-button active" : "tab-button"}
+            onClick={() => setActiveInspectorTab("changes")}
+          >
+            변경
+          </button>
+          <button
+            type="button"
+            className={activeInspectorTab === "status" ? "tab-button active" : "tab-button"}
+            onClick={() => setActiveInspectorTab("status")}
+          >
+            상태
+          </button>
+        </header>
+
+        {activeInspectorTab === "review" && (
+          <section className="review-panel">
+            <h3>스테이징되지 않음</h3>
+            {approvals.length > 0 ? (
+              approvals.map((approval) => (
+                <article key={approval.id} className="review-card">
+                  <strong>{approval.title}</strong>
+                  <p>{approval.action_type}</p>
+                  <span className={statusClass(approval.status)}>{approval.status}</span>
+                  <span className="status-pill">{approval.risk_level}</span>
+                </article>
+              ))
+            ) : (
+              <div className="empty-review">
+                <h2>스테이징되지 않은 변경 사항 없음</h2>
+                <p>코드 변경 사항이 여기 나타납니다.</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeInspectorTab === "changes" && (
+          <section className="review-panel">
+            <h3>Diff / Artifacts</h3>
+            {diff ? (
+              <pre className="diff-view">{diff.diff}</pre>
+            ) : (
+              <p className="empty-state">표시할 diff가 없습니다.</p>
+            )}
+            {artifacts.length > 0 && (
+              <ul className="artifact-list">
+                {artifacts.map((artifact) => (
+                  <li key={artifact.id}>
+                    <strong>{artifact.kind}</strong>
+                    <small>{artifact.size_bytes} bytes</small>
+                    <code>{artifact.storage_path}</code>
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-          {projects.length === 0 && <p className="empty-state">No projects found.</p>}
-        </div>
-
-        <div className="sidebar-section">
-          <h3>Work Items / Tasks</h3>
-          {tasks.length > 0 ? (
-            <ul className="task-list">
-              {tasks.map(t => (
-                <li
-                  key={t.id}
-                  className={t.id === selectedTaskId ? "active" : ""}
-                  onClick={() => setSelectedTaskId(t.id)}
-                  style={{ cursor: "pointer", fontWeight: t.id === selectedTaskId ? "bold" : "normal" }}
-                >
-                  {t.title} <span className="badge">[{t.status}]</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="empty-state">No tasks found for this project.</p>
-          )}
-        </div>
-
-        <div className="sidebar-section">
-          <h3>Settings Summary</h3>
-          {settings ? (
-            <ul className="settings-list">
-              <li><strong>Approval Mode:</strong> {settings.approval_mode}</li>
-              <li><strong>Danger Local Config:</strong> {String(settings.allow_danger_local_config)}</li>
-              <li><strong>Adapter:</strong> {settings.adapter_summary}</li>
-            </ul>
-          ) : (
-            <p>Loading settings...</p>
-          )}
-        </div>
-      </aside>
-
-      {/* MAIN PANEL */}
-      <main className="dashboard-main">
-        <div className="main-section">
-          <h3>Owner Conversation</h3>
-          <div className="conversation-shell">
-            {isLoadingConversations ? (
-              <p>Loading conversations...</p>
-            ) : selectedConversation ? (
-              <div className="conversation-container">
-                <div className="conversation-header" style={{ marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "1px solid #ccc" }}>
-                  <strong>Conversation:</strong> {selectedConversation.title} [{selectedConversation.status}]<br/>
-                  <small>ID: {selectedConversation.id} | Updated: {new Date(selectedConversation.updated_at).toLocaleString()}</small>
-                </div>
-
-                {agentRuns.length > 0 ? (
-                  <div className="agent-runs-selector" style={{ marginBottom: "1rem" }}>
-                    <strong>Agent Runs:</strong>
-                    <select value={selectedAgentRunId || ""} onChange={e => setSelectedAgentRunId(e.target.value)} style={{ marginLeft: "0.5rem" }}>
-                      {agentRuns.map(run => (
-                        <option key={run.id} value={run.id}>Run {run.id.substring(0,8)} - {run.purpose} [{run.status}]</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <p className="empty-state">No agent runs yet.</p>
-                )}
-
-                <div className="activity-feed" style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #eee", padding: "0.5rem" }}>
-                  {feedItems.length > 0 ? (
-                    feedItems.map((item, idx) => {
-                      if (item.type === 'message') {
-                        const m = item.data as MessageDto;
-                        return (
-                          <div key={`msg-${m.id}`} style={{ marginBottom: "0.5rem", padding: "0.5rem", backgroundColor: m.role === 'user' ? "#e3f2fd" : "#f5f5f5" }}>
-                            <strong>{m.role.toUpperCase()}</strong>: <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.content}</pre>
-                          </div>
-                        );
-                      } else if (item.type === 'step') {
-                        const s = item.data as AgentRunStepDto;
-                        return (
-                          <div key={`step-${s.id}`} style={{ marginBottom: "0.5rem", padding: "0.5rem", borderLeft: "3px solid #ff9800" }}>
-                            <em>Step: {s.step_type} [{s.status}]</em> - {s.summary}
-                          </div>
-                        );
-                      } else if (item.type === 'tool') {
-                        const t = item.data as ToolCallDto;
-                        return (
-                          <div key={`tool-${t.id}`} style={{ marginBottom: "0.5rem", padding: "0.5rem", borderLeft: "3px solid #4caf50" }}>
-                            <strong>Tool Call:</strong> {t.tool_name} [{t.status}]
-                            <pre style={{ margin: 0, fontSize: "0.85em" }}>{JSON.stringify(t.arguments_json, null, 2)}</pre>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })
-                  ) : (
-                    <p className="empty-state">No activity feed items.</p>
-                  )}
-                </div>
-
-                <div className="owner-input-area" style={{ display: "flex", gap: "0.5rem" }}>
-                  <input
-                    type="text"
-                    value={draftMessage}
-                    onChange={e => setDraftMessage(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Ask Owner to do something..."
-                    disabled={isSendingMessage}
-                    style={{ flex: 1, padding: "0.5rem" }}
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!draftMessage.trim() || isSendingMessage}
-                    style={{ padding: "0.5rem 1rem" }}
-                  >
-                    {isSendingMessage ? "Sending..." : "Send to Owner"}
-                  </button>
-                </div>
-                {sendError && <div style={{ color: "red", marginTop: "0.5rem" }}>Failed to send message: {sendError}</div>}
-
-              </div>
-            ) : (
-              <p className="empty-state">No conversations yet.</p>
             )}
-          </div>
-        </div>
+          </section>
+        )}
 
-        <div className="main-section">
-          <h3>Task Detail</h3>
-          <div className="task-detail-shell">
+        {activeInspectorTab === "status" && (
+          <section className="review-panel">
+            <h3>Task / Worker</h3>
             {selectedTask ? (
-              <div>
-                <h4>{selectedTask.title}</h4>
-                <p><strong>Status:</strong> {selectedTask.status} | <strong>Risk Level:</strong> {selectedTask.risk_level}</p>
-                {taskTrace?.source && (
-                  <div style={{ backgroundColor: "#f0f8ff", padding: "0.5rem", marginBottom: "1rem", borderLeft: "4px solid #1976d2" }}>
-                    <strong>Trace:</strong> Created by Owner tool call <code>{taskTrace.source.tool_name}</code> in AgentRun <code>{taskTrace.source.agent_run_id?.substring(0, 8) || 'none'}</code> (Provider: {taskTrace.source.provider_kind})
-                  </div>
-                )}
-                <p><strong>Instructions:</strong></p>
-                <pre>{selectedTask.instructions}</pre>
-                <p><strong>Write Scope:</strong> {JSON.stringify(selectedTask.write_scope)}</p>
+              <div className="status-stack">
+                <article className="status-card">
+                  <span>Task</span>
+                  <strong>{selectedTask.title}</strong>
+                  <span className={statusClass(selectedTask.status)}>{selectedTask.status}</span>
+                  <p>{selectedTask.instructions}</p>
+                </article>
 
-                {attempts.length > 0 && (
-                  <div style={{ marginTop: "1rem", padding: "1rem", backgroundColor: "#f9f9f9", borderRadius: "4px" }}>
-                    <h5>Latest Attempt</h5>
-                    {(() => {
-                      const latestAttempt = attempts[attempts.length - 1];
-                      const latestRun = workerRuns.length > 0 ? workerRuns[0] : null;
-                      return (
-                        <div>
-                          <p><strong>Attempt ID:</strong> <code>{latestAttempt.id.substring(0, 8)}</code> (Status: {latestAttempt.status})</p>
-                          {latestAttempt.result_summary && <p style={{ fontSize: "0.9em", color: "#555" }}><strong>Summary:</strong> {latestAttempt.result_summary}</p>}
-                          {latestRun && (
-                            <div>
-                              <p>
-                                <strong>Worker Run ID:</strong> <code>{latestRun.id.substring(0, 8)}</code>
-                                (Status: {latestRun.status}, Adapter: {latestRun.adapter_kind})
-                                {latestRun.adapter_kind === 'agy' && (() => {
-                                  const handoffToolCall = toolCalls.find(tc =>
-                                    tc.tool_name === "worker.run_task_attempt" &&
-                                    tc.arguments_json?.worker_run_id === latestRun.id &&
-                                    tc.result_json?.status === "handoff_started"
-                                  );
-                                  return (
-                                    <span style={{ marginLeft: "0.5rem", backgroundColor: "#fff3e0", color: "#e65100", padding: "0.1rem 0.4rem", borderRadius: "8px", fontSize: "0.8em" }}>
-                                      AGY gated/controlled
-                                      {handoffToolCall && ` (Handoff Started: Process ${handoffToolCall.result_json?.process_run_id})`}
-                                    </span>
-                                  );
-                                })()}
-                              </p>
-                              {latestRun.summary && <p style={{ fontSize: "0.9em", color: "#555" }}><strong>Summary:</strong> {latestRun.summary}</p>}
-                            </div>
-                          )}
-                          <div style={{ marginTop: "0.5rem", display: "inline-block", backgroundColor: "#e8f5e9", padding: "0.2rem 0.5rem", borderRadius: "12px", fontSize: "0.85em", color: "#2e7d32" }}>
-                            ??fresh_worker_context = true
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="empty-state">No task selected.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="main-section tabs-section">
-          <div className="tabs-header">
-            <button className={activeTab === "diff" ? "active" : ""} onClick={() => setActiveTab("diff")}>Diff</button>
-            <button className={activeTab === "artifacts" ? "active" : ""} onClick={() => setActiveTab("artifacts")}>Artifacts</button>
-            <button className={activeTab === "logs" ? "active" : ""} onClick={() => setActiveTab("logs")}>Logs</button>
-          </div>
-          <div className="tabs-content">
-            {activeTab === "diff" && (
-              diff ? (
-                <pre className="diff-view">{diff.diff}</pre>
-              ) : (
-                <p className="empty-state">No diff available.</p>
-              )
-            )}
-            {activeTab === "artifacts" && (
-              artifacts.length > 0 ? (
-                <ul>
-                  {artifacts.map(a => (
-                    <li key={a.id}>{a.kind} - {a.storage_path} ({a.size_bytes} bytes)</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="empty-state">No artifacts available.</p>
-              )
-            )}
-            {activeTab === "logs" && (
-              workerRuns.length > 0 ? (
-                <div>
-                  <p>Worker runs: {workerRuns.length}</p>
-                  {workerRuns.map(run => (
-                    <div key={run.id} style={{marginBottom: "1em", borderBottom: "1px solid #ccc"}}>
-                      <strong>{run.adapter_kind}</strong> [{run.status}]<br/>
-                      {run.error_message && <span style={{color: "red"}}>{run.error_message}</span>}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty-state">No worker runs to display logs for.</p>
-              )
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* RIGHT PANEL */}
-      <aside className="dashboard-right">
-        <div className="right-section">
-          <h3>Worker & Worktree Status</h3>
-          <div className="status-shell">
-            {selectedAttempt ? (
-              <div>
-                <p><strong>Attempt:</strong> #{selectedAttempt.attempt_number} [{selectedAttempt.status}]</p>
-                {workerRuns.length > 0 && (
-                  <p><strong>Latest Run:</strong> {workerRuns[workerRuns.length - 1].status} ({workerRuns[workerRuns.length - 1].adapter_kind})</p>
-                )}
-                {worktree ? (
-                  <div>
-                    <p><strong>Worktree:</strong> {worktree.status}</p>
-                    <p><strong>Branch:</strong> {worktree.branch_name}</p>
-                  </div>
+                {selectedAttempt ? (
+                  <article className="status-card">
+                    <span>Attempt #{selectedAttempt.attempt_number}</span>
+                    <strong>{shortId(selectedAttempt.id)}</strong>
+                    <span className={statusClass(selectedAttempt.status)}>{selectedAttempt.status}</span>
+                    {selectedAttempt.result_summary && <p>{selectedAttempt.result_summary}</p>}
+                  </article>
                 ) : (
-                  <p>No worktree created yet.</p>
+                  <p className="empty-state">선택된 Attempt가 없습니다.</p>
+                )}
+
+                {latestWorkerRun && (
+                  <article className="status-card">
+                    <span>WorkerRun</span>
+                    <strong>{shortId(latestWorkerRun.id)} · {latestWorkerRun.adapter_kind}</strong>
+                    <span className={statusClass(latestWorkerRun.status)}>{latestWorkerRun.status}</span>
+                    {latestWorkerRun.summary && <p>{latestWorkerRun.summary}</p>}
+                    {latestWorkerRun.error_message && <p className="error">{latestWorkerRun.error_message}</p>}
+                  </article>
+                )}
+
+                {worktree && (
+                  <article className="status-card">
+                    <span>Worktree</span>
+                    <strong>{worktree.status}</strong>
+                    <code>{worktree.branch_name}</code>
+                    <small>{worktree.worktree_path}</small>
+                  </article>
                 )}
               </div>
             ) : (
-              <p className="empty-state">No attempt selected.</p>
+              <p className="empty-state">선택된 작업이 없습니다.</p>
             )}
-          </div>
-        </div>
 
-        <div className="right-section">
-          <h3>Approval</h3>
-          <div className="approval-card">
-            {approvals.length > 0 ? (
-              approvals.map(req => (
-                <div key={req.id} style={{marginBottom: "1em", paddingBottom: "1em", borderBottom: "1px solid #ccc"}}>
-                  <h4>{req.title}</h4>
-                  <p><strong>Action:</strong> {req.action_type}</p>
-                  <p><strong>Risk:</strong> {req.risk_level}</p>
-                  <p><strong>Status:</strong> {req.status}</p>
-                  <button disabled>Approve (Squash Merge)</button>
-                  <button disabled>Reject</button>
-                </div>
-              ))
-            ) : (
-              <p className="empty-state">No pending approvals.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="right-section">
-          <h3>Grant Summary</h3>
-          <div className="grant-summary placeholder">
-            <p>{settings?.active_grant_placeholder || "[Placeholder: Loading Grant...]"}</p>
-          </div>
-        </div>
+            <div className="grant-card">
+              <h3>권한</h3>
+              <p>{settings?.active_grant_placeholder || "[Grant 정보 없음]"}</p>
+              <small>Updated {formatDate(selectedConversation?.updated_at)}</small>
+            </div>
+          </section>
+        )}
       </aside>
     </div>
   );
 }
+
