@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
+import "./app-primitives.css";
+
 export type ActionMenuItem = {
   label: string;
   onSelect: () => void;
