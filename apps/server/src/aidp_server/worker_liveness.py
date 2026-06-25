@@ -34,7 +34,28 @@ def as_utc(value: datetime) -> datetime:
 
 
 def worker_run_liveness_at(worker_run: WorkerRun) -> datetime:
-    return worker_run.updated_at or worker_run.started_at or worker_run.created_at
+    return (
+        worker_run.last_heartbeat_at
+        or worker_run.updated_at
+        or worker_run.started_at
+        or worker_run.created_at
+    )
+
+
+def mark_worker_run_running_with_lease(
+    worker_run: WorkerRun,
+    *,
+    timeout_seconds: int,
+    heartbeat_source: str,
+    now: datetime | None = None,
+) -> datetime:
+    current_time = as_utc(now or datetime.now(timezone.utc))
+    worker_run.status = RecordStatus.RUNNING
+    worker_run.started_at = worker_run.started_at or current_time
+    worker_run.last_heartbeat_at = current_time
+    worker_run.lease_expires_at = current_time + timedelta(seconds=timeout_seconds)
+    worker_run.heartbeat_source = heartbeat_source
+    return current_time
 
 
 def recover_stale_worker_runs(
@@ -73,7 +94,13 @@ def recover_stale_worker_runs(
 
     for worker_run in candidates:
         last_liveness_at = as_utc(worker_run_liveness_at(worker_run))
-        if last_liveness_at > cutoff:
+        lease_expires_at = (
+            as_utc(worker_run.lease_expires_at) if worker_run.lease_expires_at is not None else None
+        )
+        if lease_expires_at is not None:
+            if lease_expires_at > current_time:
+                continue
+        elif last_liveness_at > cutoff:
             continue
 
         worker_run.status = RecordStatus.FAILED
@@ -104,6 +131,7 @@ def recover_stale_worker_runs(
                 "worker_id": worker_run.worker_id,
                 "timeout_seconds": timeout_seconds,
                 "last_liveness_at": last_liveness_at.isoformat(),
+                "lease_expires_at": lease_expires_at.isoformat() if lease_expires_at else None,
                 "recovery_trigger": "owner_tool_call",
                 "worktree_preserved": True,
                 "automatic_retry": False,

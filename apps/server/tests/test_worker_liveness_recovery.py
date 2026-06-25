@@ -162,6 +162,49 @@ def test_fresh_running_worker_run_is_not_recovered(app_harness: AppHarness) -> N
         assert attempt.status == TaskAttemptStatus.RUNNING_WORKER
 
 
+def test_future_worker_run_lease_prevents_recovery_even_with_old_updated_at(
+    app_harness: AppHarness,
+) -> None:
+    authenticate(app_harness)
+    project_id = create_project(app_harness)
+    run = _agent_run(app_harness, project_id)
+    task_one = task(app_harness, project_id)
+    started = _start_mock_attempt(app_harness, run.id, task_one["id"])
+    old_time = datetime.now(timezone.utc) - timedelta(hours=2)
+    future_lease = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    with app_harness.session_factory() as session:
+        attempt = session.get(TaskAttempt, started["task_attempt_id"])
+        worker_run = session.get(WorkerRun, started["worker_run_id"])
+        assert attempt is not None
+        assert worker_run is not None
+        attempt.status = TaskAttemptStatus.RUNNING_WORKER
+        attempt.started_at = old_time
+        attempt.updated_at = old_time
+        worker_run.status = RecordStatus.RUNNING
+        worker_run.started_at = old_time
+        worker_run.updated_at = old_time
+        worker_run.last_heartbeat_at = old_time
+        worker_run.lease_expires_at = future_lease
+        worker_run.heartbeat_source = "test"
+        session.commit()
+
+    response = _recover_stale_runs(app_harness, run.id)
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == ToolCallStatus.SUCCEEDED.value
+    assert body["result_json"]["recovered_count"] == 0
+
+    with app_harness.session_factory() as session:
+        attempt = session.get(TaskAttempt, started["task_attempt_id"])
+        worker_run = session.get(WorkerRun, started["worker_run_id"])
+        assert attempt is not None
+        assert worker_run is not None
+        assert worker_run.status == RecordStatus.RUNNING
+        assert attempt.status == TaskAttemptStatus.RUNNING_WORKER
+
+
 def test_recovery_unblocks_capacity_for_next_queued_worker_run(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     project_id = create_project(app_harness)

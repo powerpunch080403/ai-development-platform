@@ -14,6 +14,7 @@ from aidp_server.db.models import (
     Conversation,
     Project,
     ProjectRepository,
+    RecordStatus,
     RiskLevel,
     Task,
     TaskAttempt,
@@ -190,6 +191,9 @@ class WorkerRunView(BaseModel):
     worker_id: str
     adapter_kind: str
     status: str
+    last_heartbeat_at: datetime | None
+    lease_expires_at: datetime | None
+    heartbeat_source: str | None
     started_at: datetime | None
     completed_at: datetime | None
     failed_at: datetime | None
@@ -931,6 +935,16 @@ def heartbeat(
         update(TaskAttempt)
         .where(TaskAttempt.claimed_by_worker_id == w.id, TaskAttempt.lease_expires_at > now)
         .values(lease_expires_at=now + LEASE_TTL),
+        execution_options={"synchronize_session": False},
+    )
+    session.execute(
+        update(WorkerRun)
+        .where(WorkerRun.worker_id == w.id, WorkerRun.status == RecordStatus.RUNNING)
+        .values(
+            last_heartbeat_at=now,
+            lease_expires_at=now + LEASE_TTL,
+            heartbeat_source="worker_heartbeat",
+        ),
         execution_options={"synchronize_session": False},
     )
     audit(
