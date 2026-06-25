@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #1f2937;
   background: #f4f4f5;
@@ -61,20 +61,40 @@ textarea {
   background: #ffffff;
 }
 
+.codex-layout.inspector-collapsed {
+  grid-template-columns: 296px minmax(0, 1fr);
+}
+
 .codex-sidebar {
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-width: 0;
   overflow: auto;
-  padding: 14px 10px;
+  padding: 12px 8px;
   border-right: 1px solid #e4e4e7;
   background: #f4f4f5;
 }
 
-.sidebar-actions {
+.app-rail {
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.rail-button {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 9px;
+  border: 0;
+  color: #3f3f46;
+  background: transparent;
+}
+
+.rail-button:hover:not(:disabled) {
+  color: #18181b;
+  background: #e8e8e8;
 }
 
 .side-group {
@@ -92,7 +112,7 @@ textarea {
   padding: 0 8px;
   color: #71717a;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .side-note,
@@ -103,6 +123,7 @@ textarea {
   font-size: 13px;
 }
 
+.project-list,
 .sidebar-list,
 .repo-compact-list,
 .artifact-list {
@@ -113,14 +134,15 @@ textarea {
   padding: 0;
 }
 
-.repo-compact-list li {
+.project-row-shell {
+  position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px;
   gap: 2px;
-  padding: 8px;
-  border-radius: 9px;
-  color: #3f3f46;
+  align-items: center;
 }
 
+.project-row,
 .sidebar-row,
 .ghost-button {
   width: 100%;
@@ -133,17 +155,106 @@ textarea {
   background: transparent;
 }
 
-.sidebar-row {
+.project-row {
   display: grid;
-  gap: 2px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
   padding: 8px 9px;
 }
 
+.project-row:hover,
+.project-row.active,
 .sidebar-row:hover,
 .sidebar-row.active,
 .ghost-button:hover:not(:disabled) {
   background: #e8e8e8;
   color: #18181b;
+}
+
+.project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+}
+
+.project-light {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 90%);
+}
+
+.project-light.green {
+  background: #22c55e;
+}
+
+.project-light.yellow {
+  background: #eab308;
+}
+
+.project-light.red {
+  background: #ef4444;
+}
+
+.project-light.gray {
+  background: #a1a1aa;
+}
+
+.project-icon-button {
+  min-height: 30px;
+  width: 30px;
+  padding: 0;
+  border: 0;
+  color: #71717a;
+  background: transparent;
+}
+
+.project-icon-button:hover:not(:disabled) {
+  color: #18181b;
+  background: #e8e8e8;
+}
+
+.project-menu-wrap {
+  position: relative;
+}
+
+.project-menu {
+  position: absolute;
+  top: 32px;
+  right: 0;
+  z-index: 30;
+  display: grid;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgb(24 24 27 / 14%);
+}
+
+.project-menu button {
+  justify-content: flex-start;
+  border: 0;
+  color: #27272a;
+  background: transparent;
+  font-weight: 600;
+}
+
+.project-menu button:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.project-menu .danger-action {
+  color: #991b1b;
+}
+
+.sidebar-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 9px;
 }
 
 .sidebar-row span,
@@ -154,6 +265,14 @@ textarea {
 .sidebar-row small {
   color: #71717a;
   font-weight: 500;
+}
+
+.repo-compact-list li {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 9px;
+  color: #3f3f46;
 }
 
 .codex-chat {
@@ -276,7 +395,7 @@ pre {
 
 .composer {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   width: min(760px, calc(100% - 56px));
@@ -310,6 +429,13 @@ pre {
   padding: 8px 12px;
   border-bottom: 1px solid #eeeeee;
   background: #ffffff;
+}
+
+.panel-toggle {
+  margin-left: auto;
+  color: #52525b;
+  background: #ffffff;
+  border-color: #d4d4d8;
 }
 
 .tab-button {
@@ -369,6 +495,31 @@ pre {
   font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
+}
+
+.task-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  justify-content: stretch;
+  min-height: 44px;
+  text-align: left;
+  color: #27272a;
+  background: #fafafa;
+  border-color: #e4e4e7;
+}
+
+.task-row.active,
+.task-row:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.task-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .diff-view {
@@ -489,6 +640,10 @@ code {
   padding: 10px 12px;
 }
 
+.error-inline {
+  color: #991b1b;
+}
+
 .workspace {
   display: grid;
   gap: 16px;
@@ -552,7 +707,8 @@ textarea {
 }
 
 @media (max-width: 1180px) {
-  .codex-layout {
+  .codex-layout,
+  .codex-layout.inspector-collapsed {
     grid-template-columns: 260px minmax(0, 1fr);
   }
 
@@ -569,6 +725,7 @@ textarea {
   }
 
   .codex-layout,
+  .codex-layout.inspector-collapsed,
   .records-grid,
   .composer {
     grid-template-columns: 1fr;
