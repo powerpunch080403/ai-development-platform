@@ -10,6 +10,8 @@ export type ActionMenuItem = {
   destructive?: boolean;
 };
 
+type DialogActionResult = void | Promise<void> | null;
+
 type ActionMenuProps = {
   ariaLabel: string;
   items: ActionMenuItem[];
@@ -48,7 +50,7 @@ type TextInputDialogProps = {
   initialValue: string;
   confirmLabel?: string;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (value: string) => void | Promise<void>;
+  onSubmit: (value: string) => DialogActionResult;
 };
 
 export function TextInputDialog({
@@ -121,7 +123,7 @@ type ConfirmDialogProps = {
   confirmLabel?: string;
   destructive?: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: () => void | Promise<void>;
+  onConfirm: () => DialogActionResult;
 };
 
 export function ConfirmDialog({
