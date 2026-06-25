@@ -39,18 +39,19 @@ textarea {
   display: none;
 }
 
-.view-toggle {
+.session-logout {
   position: fixed;
-  top: 10px;
   right: 14px;
-  z-index: 20;
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid #e4e4e7;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 92%);
-  box-shadow: 0 8px 24px rgb(24 24 27 / 8%);
+  bottom: 14px;
+  z-index: 40;
+  min-height: 32px;
+  padding: 6px 10px;
+  box-shadow: 0 10px 28px rgb(24 24 27 / 10%);
+}
+
+.pairing-panel {
+  width: min(460px, calc(100% - 32px));
+  margin: 12vh auto 0;
 }
 
 .codex-layout {
@@ -126,12 +127,18 @@ textarea {
 .project-list,
 .sidebar-list,
 .repo-compact-list,
-.artifact-list {
+.artifact-list,
+.project-chat-list {
   display: grid;
   gap: 3px;
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.project-stack {
+  display: grid;
+  gap: 2px;
 }
 
 .project-row-shell {
@@ -142,8 +149,13 @@ textarea {
   align-items: center;
 }
 
+.project-chat-list {
+  padding: 0 0 3px 24px;
+}
+
 .project-row,
 .sidebar-row,
+.project-chat-row,
 .ghost-button {
   width: 100%;
   min-height: 36px;
@@ -163,10 +175,20 @@ textarea {
   padding: 8px 9px;
 }
 
+.project-chat-row {
+  min-height: 30px;
+  padding: 5px 8px;
+  color: #52525b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .project-row:hover,
 .project-row.active,
 .sidebar-row:hover,
 .sidebar-row.active,
+.project-chat-row:hover,
+.project-chat-row.active,
 .ghost-button:hover:not(:disabled) {
   background: #e8e8e8;
   color: #18181b;
@@ -718,12 +740,6 @@ textarea {
 }
 
 @media (max-width: 760px) {
-  .view-toggle {
-    position: static;
-    margin: 8px;
-    width: fit-content;
-  }
-
   .codex-layout,
   .codex-layout.inspector-collapsed,
   .records-grid,
