@@ -448,14 +448,13 @@ def start_agent_run(
         raise HTTPException(status_code=400, detail="AgentRun is not in a startable state")
 
     provider_kind = request.provider_kind or "codex_cli"
+    from aidp_server.owner_providers import SUPPORTED_OWNER_PROVIDER_KINDS, get_owner_provider
 
-    if provider_kind == "fake":
-        if not settings.allow_fake_owner_provider:
-            raise HTTPException(status_code=403, detail="Fake owner provider is not allowed")
-    elif provider_kind != "codex_cli":
+    if provider_kind not in SUPPORTED_OWNER_PROVIDER_KINDS:
         raise HTTPException(status_code=400, detail=f"Unknown owner provider kind: {provider_kind}")
+    if provider_kind == "fake" and not settings.allow_fake_owner_provider:
+        raise HTTPException(status_code=403, detail="Fake owner provider is not allowed")
 
-    from aidp_server.owner_providers import get_owner_provider
     try:
         provider = get_owner_provider(provider_kind, settings)
     except ValueError as e:
