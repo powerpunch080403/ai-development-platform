@@ -547,10 +547,11 @@ def start_agent_run(
     run.completed_at = None
     run.failed_at = None
     run.cancelled_at = None
+    existing_provider_metadata = run.provider_metadata_json or {}
     run.provider_kind = provider_kind
     run.provider_model = None
     run.runtime_version = None
-    run.provider_metadata_json = {"provider_kind": provider_kind}
+    run.provider_metadata_json = {**existing_provider_metadata, "provider_kind": provider_kind}
     run.error_code = None
     run.error_category = None
     run.error_message = None

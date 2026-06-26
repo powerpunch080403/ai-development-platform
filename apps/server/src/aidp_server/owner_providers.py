@@ -424,12 +424,113 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
     provider_kind = "fake"
 
     def start_agent_run(self, session: Session, run: AgentRun) -> None:
+        scripted_request = (run.provider_metadata_json or {}).get("scripted_tool_request")
+        if isinstance(scripted_request, dict):
+            self._run_scripted_tool_request(session, run, scripted_request)
+            return
+
         self._complete_run(
             session,
             run,
             event_type="owner_runtime.started",
             message="Owner Runtime started (fake)",
-            metadata={"fake": True},
+            metadata={
+                "fake": True,
+                "tool_loop_executed": False,
+                "task_side_effects_performed": False,
+                "worker_side_effects_performed": False,
+                "approval_side_effects_performed": False,
+            },
+        )
+
+    def _run_scripted_tool_request(
+        self,
+        session: Session,
+        run: AgentRun,
+        scripted_request: dict[str, object],
+    ) -> None:
+        from aidp_server.owner_tool_loop import OwnerToolRequest, request_tool_from_owner_provider
+
+        tool_name = scripted_request.get("tool_name")
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            self._mark_failed(
+                session,
+                run,
+                error_code="fake_provider_invalid_script",
+                error_category="provider_configuration_error",
+                error_message="Fake provider scripted_tool_request.tool_name is required.",
+                event_type="owner_runtime.fake_script_invalid",
+                metadata={"fake": True, "tool_loop_executed": False},
+            )
+            return
+
+        raw_arguments = scripted_request.get("arguments_json", {})
+        if not isinstance(raw_arguments, dict):
+            self._mark_failed(
+                session,
+                run,
+                error_code="fake_provider_invalid_script",
+                error_category="provider_configuration_error",
+                error_message="Fake provider scripted_tool_request.arguments_json must be an object.",
+                event_type="owner_runtime.fake_script_invalid",
+                metadata={"fake": True, "tool_loop_executed": False},
+            )
+            return
+
+        provider_call_id = scripted_request.get("provider_call_id")
+        if provider_call_id is not None and not isinstance(provider_call_id, str):
+            provider_call_id = str(provider_call_id)
+
+        call = request_tool_from_owner_provider(
+            session,
+            run,
+            provider_kind=self.provider_kind,
+            request=OwnerToolRequest(
+                tool_name=tool_name,
+                arguments_json=raw_arguments,
+                provider_call_id=provider_call_id,
+                metadata={"source": "fake_scripted_provider"},
+            ),
+        )
+
+        if call.status.value != "succeeded":
+            self._mark_failed(
+                session,
+                run,
+                error_code=call.error_code or "owner_tool_call_failed",
+                error_category="tool_call_failed",
+                error_message=call.error_message or f"Owner tool call failed: {tool_name}",
+                event_type="owner_runtime.fake_script_failed",
+                metadata={
+                    "fake": True,
+                    "tool_loop_executed": True,
+                    "tool_call_id": call.id,
+                    "tool_name": tool_name,
+                    "tool_status": call.status.value,
+                    "task_side_effects_performed": False,
+                    "worker_side_effects_performed": False,
+                    "approval_side_effects_performed": False,
+                },
+            )
+            return
+
+        result_json = call.result_json or {}
+        self._complete_run(
+            session,
+            run,
+            event_type="owner_runtime.fake_script_completed",
+            message="Owner Runtime completed fake scripted tool request.",
+            metadata={
+                "fake": True,
+                "tool_loop_executed": True,
+                "tool_call_id": call.id,
+                "tool_name": tool_name,
+                "tool_status": call.status.value,
+                "task_id": result_json.get("task_id"),
+                "task_side_effects_performed": tool_name == "task.create",
+                "worker_side_effects_performed": False,
+                "approval_side_effects_performed": False,
+            },
         )
 
 

@@ -30,6 +30,11 @@ from aidp_server.db.models import (
     WorkerStatus,
 )
 from aidp_server.db.session import get_session
+from aidp_server.task_creation import (
+    TaskCreationError,
+    TaskCreationRequest,
+    create_task_from_platform_request,
+)
 from aidp_server.state_transitions import (
     StateTransitionError,
     assert_public_task_attempt_transition,
@@ -429,40 +434,29 @@ def create_task(
     current: CurrentAuth,
     session: Annotated[Session, Depends(get_session)],
 ) -> TaskView:
-    owned(session, Project, project_id, current.user.id)
     try:
-        write_scope = normalize_write_scope(request.write_scope)
+        task = create_task_from_platform_request(
+            session,
+            TaskCreationRequest(
+                local_user_id=current.user.id,
+                project_id=project_id,
+                repository_id=request.repository_id,
+                work_item_id=request.work_item_id,
+                conversation_id=request.conversation_id,
+                agent_run_id=request.agent_run_id,
+                created_by_session_id=current.runtime_session.id,
+                title=request.title,
+                instructions=request.instructions,
+                write_scope=request.write_scope,
+                risk_level=request.risk_level,
+                requested_worker_kind=request.requested_worker_kind,
+            ),
+        )
     except WriteScopeError as error:
         raise HTTPException(status_code=422, detail=error.detail())
-    for model, oid in (
-        (ProjectRepository, request.repository_id),
-        (WorkItem, request.work_item_id),
-        (Conversation, request.conversation_id),
-        (AgentRun, request.agent_run_id),
-    ):
-        if oid:
-            linked = owned(session, model, oid, current.user.id)
-            if getattr(linked, "project_id", project_id) != project_id:
-                raise HTTPException(
-                    status_code=400, detail=f"{model.__name__} belongs to another project"
-                )
-    task = Task(
-        local_user_id=current.user.id,
-        project_id=project_id,
-        repository_id=request.repository_id,
-        work_item_id=request.work_item_id,
-        conversation_id=request.conversation_id,
-        agent_run_id=request.agent_run_id,
-        created_by_session_id=current.runtime_session.id,
-        title=request.title,
-        instructions=request.instructions,
-        write_scope_json=write_scope,
-        status=TaskStatus.DRAFT,
-        risk_level=request.risk_level,
-        requested_worker_kind=request.requested_worker_kind,
-    )
-    session.add(task)
-    session.flush()
+    except TaskCreationError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail())
+
     audit(
         session,
         current,
