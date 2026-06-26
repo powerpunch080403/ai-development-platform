@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import re
 import shlex
 import subprocess
 
@@ -19,6 +20,17 @@ from aidp_server.db.models import (
 )
 
 SUPPORTED_OWNER_PROVIDER_KINDS = {"codex_cli", "openai_api", "local_ai", "fake"}
+CODEX_USAGE_LIMIT_RESET_RE = re.compile(r"try again at\s+(.+?)(?:\.|\n|$)", re.IGNORECASE)
+
+
+def codex_usage_limit_message(stderr: str) -> str | None:
+    if "usage limit" not in stderr.lower():
+        return None
+    match = CODEX_USAGE_LIMIT_RESET_RE.search(stderr)
+    if match:
+        reset_at = match.group(1).strip()
+        return f"Codex usage limit reached. Try again at {reset_at}."
+    return "Codex usage limit reached. Try again later."
 
 
 class OwnerRuntimeProvider:
@@ -252,11 +264,14 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
         stdout_val = result.stdout.strip()
         stderr_val = result.stderr.strip()
         if result.returncode != 0:
+            usage_limit_message = codex_usage_limit_message(stderr_val)
             self._mark_failed(
                 session,
                 run,
-                error_code="owner_provider_failed",
-                error_message=stderr_val[:4000] or f"Owner CLI exited with code {result.returncode}.",
+                error_code="owner_provider_usage_limit" if usage_limit_message else "owner_provider_failed",
+                error_message=usage_limit_message
+                or stderr_val[:4000]
+                or f"Owner CLI exited with code {result.returncode}.",
                 event_type="owner_runtime.prompt_failed",
                 metadata={
                     "command": self.settings.codex_cli_command,
@@ -265,6 +280,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     "stdout_excerpt": stdout_val[:500],
                     "stderr_excerpt": stderr_val[:500],
                     "mode": "prompt",
+                    "usage_limit": usage_limit_message is not None,
                 },
             )
             return
