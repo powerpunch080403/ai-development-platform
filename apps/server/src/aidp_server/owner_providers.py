@@ -102,7 +102,7 @@ class OwnerRuntimeProvider:
                 agent_run_id=run.id,
                 step_index=self._next_step_index(session, run),
                 step_type=AgentRunStepType.MODEL,
-                status=RecordStatus.COMPLETED,
+                status=RecordStatus.SUCCEEDED,
                 summary=summary,
                 started_at=now,
                 completed_at=now,
