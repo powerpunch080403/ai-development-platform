@@ -43,6 +43,7 @@ import {
 } from "../../api/client";
 import { ActionMenu, ConfirmDialog, TextInputDialog } from "../ui/AppPrimitives";
 import "./inspector-review.css";
+import "./composer-controls.css";
 
 type FeedItem =
   | { kind: "message"; time: number; item: MessageDto }
@@ -107,67 +108,59 @@ function artifactName(artifact: ArtifactRefDto) {
   return parts.at(-1) ?? artifact.kind;
 }
 
+function permissionModeLabel(value?: string | null) {
+  switch (value) {
+    case "ask_for_approval":
+      return "승인 요청";
+    case "approve_on_my_behalf":
+      return "대신 승인";
+    case "full_access":
+      return "전체 허용";
+    case "custom":
+      return "맞춤형";
+    default:
+      return value ?? "권한";
+  }
+}
+
 function statusClass(status?: string | null) {
   if (!status) return "status-pill";
-  if (["completed", "merged", "cleaned", "approved", "success", "succeeded"].includes(status)) {
-    return "status-pill success";
-  }
-  if (["failed", "worker_failed", "rejected", "expired", "error", "blocked"].includes(status)) {
-    return "status-pill danger";
-  }
-  if (["running", "running_worker", "waiting_for_review", "reviewing", "created", "queued"].includes(status)) {
-    return "status-pill active";
-  }
+  if (["completed", "merged", "cleaned", "approved", "success", "succeeded"].includes(status)) return "status-pill success";
+  if (["failed", "worker_failed", "rejected", "expired", "error", "blocked"].includes(status)) return "status-pill danger";
+  if (["running", "running_worker", "waiting_for_review", "reviewing", "created", "queued"].includes(status)) return "status-pill active";
   return "status-pill";
 }
 
 function statusLabel(status?: string | null) {
   switch (status) {
-    case "active":
-      return "활성";
-    case "archived":
-      return "제거됨";
+    case "active": return "활성";
+    case "archived": return "제거됨";
     case "created":
-    case "queued":
-      return "대기 중";
+    case "queued": return "대기 중";
     case "running":
-    case "running_worker":
-      return "실행 중";
+    case "running_worker": return "실행 중";
     case "waiting_for_review":
-    case "reviewing":
-      return "검토 대기";
-    case "committed":
-      return "결과 생성됨";
+    case "reviewing": return "검토 대기";
+    case "committed": return "결과 생성됨";
     case "accepted":
-    case "approved":
-      return "승인됨";
-    case "merged":
-      return "병합됨";
-    case "rejected":
-      return "거절됨";
+    case "approved": return "승인됨";
+    case "merged": return "병합됨";
+    case "rejected": return "거절됨";
     case "failed":
-    case "worker_failed":
-      return "실패";
-    case "cleanup_pending":
-      return "정리 대기";
+    case "worker_failed": return "실패";
+    case "cleanup_pending": return "정리 대기";
     case "completed":
-    case "succeeded":
-      return "완료";
-    default:
-      return status ?? "알 수 없음";
+    case "succeeded": return "완료";
+    default: return status ?? "알 수 없음";
   }
 }
 
 function projectLightLabel(light: ProjectLight) {
   switch (light) {
-    case "green":
-      return "정상";
-    case "yellow":
-      return "확인 필요";
-    case "red":
-      return "문제 있음";
-    case "gray":
-      return "상태 미확인";
+    case "green": return "정상";
+    case "yellow": return "확인 필요";
+    case "red": return "문제 있음";
+    case "gray": return "상태 미확인";
   }
 }
 
@@ -182,7 +175,6 @@ function diffPathFromHeader(line: string) {
 
 function parseUnifiedDiff(diffText?: string | null): DiffFile[] {
   if (!diffText?.trim()) return [];
-
   const files: DiffFile[] = [];
   let current: DiffFile | null = null;
   let oldLine = 0;
@@ -190,13 +182,7 @@ function parseUnifiedDiff(diffText?: string | null): DiffFile[] {
 
   function pushLine(line: DiffLine) {
     if (!current) {
-      current = {
-        id: "unified-diff",
-        path: "Unified diff",
-        additions: 0,
-        deletions: 0,
-        lines: [],
-      };
+      current = { id: "unified-diff", path: "Unified diff", additions: 0, deletions: 0, lines: [] };
       files.push(current);
     }
     current.lines.push(line);
@@ -210,7 +196,6 @@ function parseUnifiedDiff(diffText?: string | null): DiffFile[] {
       pushLine({ kind: "meta", oldLine: null, newLine: null, text: rawLine });
       continue;
     }
-
     if (rawLine.startsWith("@@")) {
       const hunk = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine);
       if (hunk) {
@@ -220,36 +205,30 @@ function parseUnifiedDiff(diffText?: string | null): DiffFile[] {
       pushLine({ kind: "meta", oldLine: null, newLine: null, text: rawLine });
       continue;
     }
-
     if (rawLine.startsWith("+++") || rawLine.startsWith("---") || rawLine.startsWith("index ")) {
       pushLine({ kind: "meta", oldLine: null, newLine: null, text: rawLine });
       continue;
     }
-
     if (rawLine.startsWith("+")) {
       if (current) current.additions += 1;
       pushLine({ kind: "add", oldLine: null, newLine, text: rawLine });
       newLine += 1;
       continue;
     }
-
     if (rawLine.startsWith("-")) {
       if (current) current.deletions += 1;
       pushLine({ kind: "remove", oldLine, newLine: null, text: rawLine });
       oldLine += 1;
       continue;
     }
-
     if (rawLine.startsWith(" ")) {
       pushLine({ kind: "context", oldLine, newLine, text: rawLine });
       oldLine += 1;
       newLine += 1;
       continue;
     }
-
     pushLine({ kind: "meta", oldLine: null, newLine: null, text: rawLine });
   }
-
   return files.filter((file) => file.lines.length > 0);
 }
 
@@ -265,7 +244,6 @@ export function PersonalModeDashboard() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [attempts, setAttempts] = useState<TaskAttemptDto[]>([]);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
-
   const [workerRuns, setWorkerRuns] = useState<WorkerRunDto[]>([]);
   const [worktree, setWorktree] = useState<GitWorktreeDto | null>(null);
   const [diff, setDiff] = useState<WorktreeDiffDto | null>(null);
@@ -289,21 +267,16 @@ export function PersonalModeDashboard() {
   const [removeProjectTarget, setRemoveProjectTarget] = useState<ProjectDto | null>(null);
   const [renameConversation, setRenameConversation] = useState<ConversationDto | null>(null);
   const [removeConversationTarget, setRemoveConversationTarget] = useState<ConversationDto | null>(null);
+  const [pendingAttachmentFiles, setPendingAttachmentFiles] = useState<File[]>([]);
+  const [composerPermissionMode, setComposerPermissionMode] = useState<string | null>(null);
+
   const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(window.localStorage.getItem(PIN_STORAGE_KEY) ?? "[]") as string[];
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(window.localStorage.getItem(PIN_STORAGE_KEY) ?? "[]") as string[]; } catch { return []; }
   });
   const [pinnedConversationIds, setPinnedConversationIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(window.localStorage.getItem(THREAD_PIN_STORAGE_KEY) ?? "[]") as string[];
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(window.localStorage.getItem(THREAD_PIN_STORAGE_KEY) ?? "[]") as string[]; } catch { return []; }
   });
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [draftMessage, setDraftMessage] = useState("");
@@ -314,17 +287,13 @@ export function PersonalModeDashboard() {
   async function refreshProjects() {
     const items = await listProjects();
     setProjects(items);
-    setSelectedProjectId((current) =>
-      current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null,
-    );
+    setSelectedProjectId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null);
   }
 
   async function refreshConversations() {
     const items = await listConversations();
     setConversations(items);
-    setSelectedConversationId((current) =>
-      current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null,
-    );
+    setSelectedConversationId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null);
   }
 
   useEffect(() => {
@@ -335,15 +304,11 @@ export function PersonalModeDashboard() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedProjectIds));
-    }
+    if (typeof window !== "undefined") window.localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pinnedProjectIds));
   }, [pinnedProjectIds]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(THREAD_PIN_STORAGE_KEY, JSON.stringify(pinnedConversationIds));
-    }
+    if (typeof window !== "undefined") window.localStorage.setItem(THREAD_PIN_STORAGE_KEY, JSON.stringify(pinnedConversationIds));
   }, [pinnedConversationIds]);
 
   useEffect(() => {
@@ -353,14 +318,11 @@ export function PersonalModeDashboard() {
       setSelectedTaskId(null);
       return;
     }
-
     listRepositories(selectedProjectId).then(setRepositories).catch(console.error);
     listTasks(selectedProjectId)
       .then((items) => {
         setTasks(items);
-        setSelectedTaskId((current) =>
-          current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null,
-        );
+        setSelectedTaskId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null);
       })
       .catch(console.error);
   }, [selectedProjectId]);
@@ -371,15 +333,10 @@ export function PersonalModeDashboard() {
       setSelectedAttemptId(null);
       return;
     }
-
     listAttempts(selectedTaskId)
       .then((items) => {
         setAttempts(items);
-        setSelectedAttemptId((current) =>
-          current && items.some((item) => item.id === current)
-            ? current
-            : items.at(-1)?.id ?? null,
-        );
+        setSelectedAttemptId((current) => current && items.some((item) => item.id === current) ? current : items.at(-1)?.id ?? null);
       })
       .catch(console.error);
   }, [selectedTaskId]);
@@ -393,17 +350,13 @@ export function PersonalModeDashboard() {
       setSelectedArtifactId(null);
       return;
     }
-
     listWorkerRuns(selectedAttemptId).then(setWorkerRuns).catch(console.error);
     listArtifacts(selectedAttemptId).then(setArtifacts).catch(console.error);
     getWorktree(selectedAttemptId)
       .then((item) => {
         setWorktree(item);
-        if (item) {
-          getWorktreeDiff(item.id).then(setDiff).catch(() => setDiff(null));
-        } else {
-          setDiff(null);
-        }
+        if (item) getWorktreeDiff(item.id).then(setDiff).catch(() => setDiff(null));
+        else setDiff(null);
       })
       .catch(() => {
         setWorktree(null);
@@ -424,14 +377,11 @@ export function PersonalModeDashboard() {
       setSelectedAgentRunId(null);
       return;
     }
-
     listMessages(selectedConversation.id).then(setMessages).catch(console.error);
     listAgentRuns(selectedConversation.id)
       .then((items) => {
         setAgentRuns(items);
-        setSelectedAgentRunId((current) =>
-          current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null,
-        );
+        setSelectedAgentRunId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null);
       })
       .catch(console.error);
   }, [selectedConversation?.id]);
@@ -442,7 +392,6 @@ export function PersonalModeDashboard() {
       setToolCalls([]);
       return;
     }
-
     listAgentRunSteps(selectedAgentRunId).then(setAgentRunSteps).catch(console.error);
     listToolCalls(selectedAgentRunId).then(setToolCalls).catch(console.error);
   }, [selectedAgentRunId]);
@@ -453,6 +402,7 @@ export function PersonalModeDashboard() {
   const latestWorkerRun = workerRuns.at(-1);
   const selectedRepository = primaryRepository(repositories);
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+  const effectivePermissionMode = composerPermissionMode ?? settings?.approval_mode ?? "ask_for_approval";
   const diffFiles = useMemo(() => parseUnifiedDiff(diff?.diff), [diff?.diff]);
   const totalAdditions = diffFiles.reduce((sum, file) => sum + file.additions, 0);
   const totalDeletions = diffFiles.reduce((sum, file) => sum + file.deletions, 0);
@@ -470,10 +420,7 @@ export function PersonalModeDashboard() {
     });
   }, [pinnedProjectIds, projects]);
 
-  const pinnedConversations = useMemo(
-    () => conversations.filter((item) => pinnedConversationIds.includes(item.id)),
-    [conversations, pinnedConversationIds],
-  );
+  const pinnedConversations = useMemo(() => conversations.filter((item) => pinnedConversationIds.includes(item.id)), [conversations, pinnedConversationIds]);
 
   const projectConversationMap = useMemo(() => {
     const map = new Map<string, ConversationDto[]>();
@@ -497,24 +444,11 @@ export function PersonalModeDashboard() {
   );
 
   const feedItems = useMemo<FeedItem[]>(
-    () =>
-      [
-        ...messages.map((item) => ({
-          kind: "message" as const,
-          time: new Date(item.created_at).getTime(),
-          item,
-        })),
-        ...agentRunSteps.map((item) => ({
-          kind: "step" as const,
-          time: new Date(item.created_at).getTime(),
-          item,
-        })),
-        ...toolCalls.map((item) => ({
-          kind: "tool" as const,
-          time: new Date(item.created_at).getTime(),
-          item,
-        })),
-      ].sort((a, b) => a.time - b.time),
+    () => [
+      ...messages.map((item) => ({ kind: "message" as const, time: new Date(item.created_at).getTime(), item })),
+      ...agentRunSteps.map((item) => ({ kind: "step" as const, time: new Date(item.created_at).getTime(), item })),
+      ...toolCalls.map((item) => ({ kind: "tool" as const, time: new Date(item.created_at).getTime(), item })),
+    ].sort((a, b) => a.time - b.time),
     [agentRunSteps, messages, toolCalls],
   );
 
@@ -529,18 +463,11 @@ export function PersonalModeDashboard() {
   }
 
   function toggleDiffFile(fileId: string) {
-    setExpandedDiffFileIds((current) =>
-      current.includes(fileId) ? current.filter((id) => id !== fileId) : [...current, fileId],
-    );
+    setExpandedDiffFileIds((current) => current.includes(fileId) ? current.filter((id) => id !== fileId) : [...current, fileId]);
   }
 
-  function collapseAllDiffFiles() {
-    setExpandedDiffFileIds([]);
-  }
-
-  function expandAllDiffFiles() {
-    setExpandedDiffFileIds(diffFiles.map((file) => file.id));
-  }
+  function collapseAllDiffFiles() { setExpandedDiffFileIds([]); }
+  function expandAllDiffFiles() { setExpandedDiffFileIds(diffFiles.map((file) => file.id)); }
 
   async function openArtifactPanel(artifact: ArtifactRefDto) {
     setSelectedArtifactId(artifact.id);
@@ -559,6 +486,24 @@ export function PersonalModeDashboard() {
     }
   }
 
+  function handleComposerFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setPendingAttachmentFiles((current) => [...current, ...Array.from(files)]);
+  }
+
+  function removePendingAttachment(index: number) {
+    setPendingAttachmentFiles((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function handleComposerPermissionChange(nextMode: string) {
+    setComposerPermissionMode(nextMode);
+    setActionError("권한 설정 저장은 다음 Grant API PR에서 연결합니다. 지금은 이 요청의 표시값으로만 반영됩니다.");
+  }
+
+  function handleVoiceInputPlaceholder() {
+    setActionError("음성 입력은 Whisper 연결 PR에서 활성화합니다.");
+  }
+
   async function handleGeneralChat() {
     setActionError(null);
     try {
@@ -573,10 +518,7 @@ export function PersonalModeDashboard() {
   async function handleProjectChat(project: ProjectDto) {
     setActionError(null);
     try {
-      const conversation = await createConversation({
-        project_id: project.id,
-        title: `${project.name} 채팅`,
-      });
+      const conversation = await createConversation({ project_id: project.id, title: `${project.name} 채팅` });
       await refreshConversations();
       setSelectedProjectId(project.id);
       setSelectedConversationId(conversation.id);
@@ -588,10 +530,7 @@ export function PersonalModeDashboard() {
   async function handleRenameConversation(conversation: ConversationDto, nextTitle: string) {
     setActionError(null);
     try {
-      await conversationRequest<ConversationDto>(`/conversations/${conversation.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ title: nextTitle }),
-      });
+      await conversationRequest<ConversationDto>(`/conversations/${conversation.id}`, { method: "PATCH", body: JSON.stringify({ title: nextTitle }) });
       await refreshConversations();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
@@ -610,11 +549,7 @@ export function PersonalModeDashboard() {
   }
 
   function togglePinnedConversation(conversation: ConversationDto) {
-    setPinnedConversationIds((current) =>
-      current.includes(conversation.id)
-        ? current.filter((id) => id !== conversation.id)
-        : [conversation.id, ...current],
-    );
+    setPinnedConversationIds((current) => current.includes(conversation.id) ? current.filter((id) => id !== conversation.id) : [conversation.id, ...current]);
   }
 
   async function handleRenameProject(project: ProjectDto, nextName: string) {
@@ -647,35 +582,28 @@ export function PersonalModeDashboard() {
   }
 
   function togglePinnedProject(project: ProjectDto) {
-    setPinnedProjectIds((current) =>
-      current.includes(project.id)
-        ? current.filter((id) => id !== project.id)
-        : [project.id, ...current],
-    );
+    setPinnedProjectIds((current) => current.includes(project.id) ? current.filter((id) => id !== project.id) : [project.id, ...current]);
   }
 
   async function handleSendMessage() {
-    if (!draftMessage.trim() || !selectedConversation) return;
+    if ((!draftMessage.trim() && pendingAttachmentFiles.length === 0) || !selectedConversation) return;
+
+    const attachmentSummary = pendingAttachmentFiles.length > 0
+      ? `\n\n첨부 파일:\n${pendingAttachmentFiles.map((file) => `- ${file.name} (${formatBytes(file.size)})`).join("\n")}`
+      : "";
+    const permissionSummary = `\n\n요청 권한 모드: ${permissionModeLabel(effectivePermissionMode)} (${effectivePermissionMode})`;
+    const content = `${draftMessage.trim() || "첨부 파일을 확인해줘."}${attachmentSummary}${permissionSummary}`;
 
     setIsSendingMessage(true);
     setSendError(null);
     try {
-      const message = await appendMessage(selectedConversation.id, {
-        role: "user",
-        content: draftMessage.trim(),
-        content_type: "text",
-      });
-      const purpose =
-        draftMessage.trim().slice(0, 50) + (draftMessage.trim().length > 50 ? "..." : "");
-      const run = await createAgentRun({
-        conversation_id: selectedConversation.id,
-        project_id: selectedConversation.project_id || undefined,
-        purpose,
-        input_message_id: message.id,
-      });
+      const message = await appendMessage(selectedConversation.id, { role: "user", content, content_type: "text" });
+      const purpose = content.slice(0, 50) + (content.length > 50 ? "..." : "");
+      const run = await createAgentRun({ conversation_id: selectedConversation.id, project_id: selectedConversation.project_id || undefined, purpose, input_message_id: message.id });
 
       await startAgentRun(run.id);
       setDraftMessage("");
+      setPendingAttachmentFiles([]);
       setMessages(await listMessages(selectedConversation.id));
       setAgentRuns(await listAgentRuns(selectedConversation.id));
       setSelectedAgentRunId(run.id);
@@ -693,21 +621,14 @@ export function PersonalModeDashboard() {
     const rowClass = variant === "project" ? "project-chat-row" : "sidebar-row";
     return (
       <li key={conversation.id} className="conversation-row-shell">
-        <button
-          type="button"
-          className={conversation.id === selectedConversation?.id ? `${rowClass} active` : rowClass}
-          onClick={() => setSelectedConversationId(conversation.id)}
-        >
+        <button type="button" className={conversation.id === selectedConversation?.id ? `${rowClass} active` : rowClass} onClick={() => setSelectedConversationId(conversation.id)}>
           <span>{isPinned ? "★ " : ""}{conversation.title}</span>
         </button>
-        <ActionMenu
-          ariaLabel="채팅 더보기"
-          items={[
-            { label: isPinned ? "채팅 고정 해제" : "채팅 고정", onSelect: () => togglePinnedConversation(conversation) },
-            { label: "채팅 이름 변경", onSelect: () => setRenameConversation(conversation) },
-            { label: "제거하기", destructive: true, onSelect: () => setRemoveConversationTarget(conversation) },
-          ]}
-        />
+        <ActionMenu ariaLabel="채팅 더보기" items={[
+          { label: isPinned ? "채팅 고정 해제" : "채팅 고정", onSelect: () => togglePinnedConversation(conversation) },
+          { label: "채팅 이름 변경", onSelect: () => setRenameConversation(conversation) },
+          { label: "제거하기", destructive: true, onSelect: () => setRemoveConversationTarget(conversation) },
+        ]} />
       </li>
     );
   }
@@ -717,9 +638,7 @@ export function PersonalModeDashboard() {
     return (
       <section className="artifact-inspector-panel">
         <header className="artifact-inspector-header">
-          <button type="button" className="secondary compact-button" onClick={() => setSelectedArtifactId(null)}>
-            ← Overview
-          </button>
+          <button type="button" className="secondary compact-button" onClick={() => setSelectedArtifactId(null)}>← Overview</button>
           <div>
             <h3>{artifactName(selectedArtifact)}</h3>
             <p>{selectedArtifact.kind} · {formatBytes(selectedArtifact.size_bytes)} · {selectedArtifact.content_type}</p>
@@ -741,18 +660,14 @@ export function PersonalModeDashboard() {
     <div className={isInspectorOpen ? "codex-layout" : "codex-layout inspector-collapsed"}>
       <aside className="codex-sidebar">
         <nav className="app-rail" aria-label="앱 탐색">
-          <button type="button" className="rail-button" onClick={() => void handleGeneralChat()}>
-            ✎ <span>새 채팅</span>
-          </button>
+          <button type="button" className="rail-button" onClick={() => void handleGeneralChat()}>✎ <span>새 채팅</span></button>
           <button type="button" className="rail-button" onClick={() => setActionError("검색은 다음 UI foundation PR에서 Command Palette로 연결합니다.")}>⌕ <span>검색</span></button>
         </nav>
 
         {pinnedConversations.length > 0 && (
           <section className="side-group pinned-group">
             <div className="side-title">고정된 스레드</div>
-            <ul className="sidebar-list">
-              {pinnedConversations.map((conversation) => renderConversationRow(conversation, "pinned"))}
-            </ul>
+            <ul className="sidebar-list">{pinnedConversations.map((conversation) => renderConversationRow(conversation, "pinned"))}</ul>
           </section>
         )}
 
@@ -766,30 +681,19 @@ export function PersonalModeDashboard() {
               return (
                 <li key={project.id} className="project-stack">
                   <div className="project-row-shell">
-                    <button
-                      type="button"
-                      className={project.id === selectedProjectId ? "project-row active" : "project-row"}
-                      onClick={() => setSelectedProjectId(project.id)}
-                    >
+                    <button type="button" className={project.id === selectedProjectId ? "project-row active" : "project-row"} onClick={() => setSelectedProjectId(project.id)}>
                       <span className={`project-light ${light}`} title={projectLightLabel(light)} />
                       <span className="project-name">{isPinned ? "★ " : ""}{project.name}</span>
                     </button>
                     <button type="button" className="project-icon-button" title="프로젝트 새 채팅" onClick={() => void handleProjectChat(project)}>＋</button>
-                    <ActionMenu
-                      ariaLabel="프로젝트 더보기"
-                      items={[
-                        { label: isPinned ? "프로젝트 고정 해제" : "프로젝트 고정", onSelect: () => togglePinnedProject(project) },
-                        { label: "탐색기에서 열기", onSelect: () => void handleOpenProject(project) },
-                        { label: "프로젝트 이름 변경", onSelect: () => setRenameProject(project) },
-                        { label: "제거하기", destructive: true, onSelect: () => setRemoveProjectTarget(project) },
-                      ]}
-                    />
+                    <ActionMenu ariaLabel="프로젝트 더보기" items={[
+                      { label: isPinned ? "프로젝트 고정 해제" : "프로젝트 고정", onSelect: () => togglePinnedProject(project) },
+                      { label: "탐색기에서 열기", onSelect: () => void handleOpenProject(project) },
+                      { label: "프로젝트 이름 변경", onSelect: () => setRenameProject(project) },
+                      { label: "제거하기", destructive: true, onSelect: () => setRemoveProjectTarget(project) },
+                    ]} />
                   </div>
-                  {project.id === selectedProjectId && projectChats.length > 0 && (
-                    <ul className="project-chat-list">
-                      {projectChats.map((conversation) => renderConversationRow(conversation, "project"))}
-                    </ul>
-                  )}
+                  {project.id === selectedProjectId && projectChats.length > 0 && <ul className="project-chat-list">{projectChats.map((conversation) => renderConversationRow(conversation, "project"))}</ul>}
                 </li>
               );
             })}
@@ -799,15 +703,13 @@ export function PersonalModeDashboard() {
 
         <section className="side-group">
           <div className="side-title">채팅</div>
-          <ul className="sidebar-list">
-            {globalConversations.map((conversation) => renderConversationRow(conversation, "sidebar"))}
-          </ul>
+          <ul className="sidebar-list">{globalConversations.map((conversation) => renderConversationRow(conversation, "sidebar"))}</ul>
           {!isLoadingConversations && globalConversations.length === 0 && <p className="empty-state">채팅이 없습니다.</p>}
         </section>
 
         <section className="side-group bottom-group">
           <div className="side-title">설정</div>
-          <p className="settings-line">승인: {settings?.approval_mode ?? "unknown"}</p>
+          <p className="settings-line">승인: {permissionModeLabel(settings?.approval_mode)}</p>
           <p className="settings-line">어댑터: {settings?.adapter_summary ?? "unknown"}</p>
         </section>
       </aside>
@@ -818,9 +720,7 @@ export function PersonalModeDashboard() {
             <h2>{selectedConversation?.title ?? "대화 없음"}</h2>
             <p>{selectedProject?.name ?? "프로젝트 미선택"}</p>
           </div>
-          {!isInspectorOpen && (
-            <button type="button" className="secondary" onClick={() => setIsInspectorOpen(true)}>패널 열기</button>
-          )}
+          {!isInspectorOpen && <button type="button" className="secondary" onClick={() => setIsInspectorOpen(true)}>패널 열기</button>}
         </header>
 
         <section className="chat-feed">
@@ -831,77 +731,68 @@ export function PersonalModeDashboard() {
               {feedItems.map((feedItem) => {
                 if (feedItem.kind === "message") {
                   const message = feedItem.item;
-                  return (
-                    <article key={`message-${message.id}`} className={message.role === "user" ? "chat-bubble user" : "chat-bubble assistant"}>
-                      <div className="bubble-label">{message.role === "user" ? "사용자" : "Owner"}</div>
-                      <pre>{message.content}</pre>
-                    </article>
-                  );
+                  return <article key={`message-${message.id}`} className={message.role === "user" ? "chat-bubble user" : "chat-bubble assistant"}><div className="bubble-label">{message.role === "user" ? "사용자" : "Owner"}</div><pre>{message.content}</pre></article>;
                 }
-
                 if (feedItem.kind === "step") {
                   const step = feedItem.item;
-                  return (
-                    <article key={`step-${step.id}`} className="event-card step">
-                      <strong>Owner 작업</strong>
-                      <span className={statusClass(step.status)}>{statusLabel(step.status)}</span>
-                      <p>{step.summary ?? step.step_type}</p>
-                    </article>
-                  );
+                  return <article key={`step-${step.id}`} className="event-card step"><strong>Owner 작업</strong><span className={statusClass(step.status)}>{statusLabel(step.status)}</span><p>{step.summary ?? step.step_type}</p></article>;
                 }
-
                 const tool = feedItem.item;
-                return (
-                  <article key={`tool-${tool.id}`} className="event-card tool">
-                    <strong>Owner가 도구를 사용했습니다</strong>
-                    <span className={statusClass(tool.status)}>{statusLabel(tool.status)}</span>
-                    <p>{tool.tool_name}</p>
-                  </article>
-                );
+                return <article key={`tool-${tool.id}`} className="event-card tool"><strong>Owner가 도구를 사용했습니다</strong><span className={statusClass(tool.status)}>{statusLabel(tool.status)}</span><p>{tool.tool_name}</p></article>;
               })}
               {artifacts.length > 0 && (
                 <article className="chat-bubble assistant artifact-feed-card">
                   <div className="bubble-label">Artifacts</div>
                   <p>현재 Attempt에서 생성된 파일입니다. 클릭하면 오른쪽에서 내용을 확인할 수 있습니다.</p>
                   <div className="artifact-chip-list">
-                    {artifacts.map((artifact) => (
-                      <button
-                        type="button"
-                        key={artifact.id}
-                        className={artifact.id === selectedArtifactId ? "artifact-chip active" : "artifact-chip"}
-                        onClick={() => void openArtifactPanel(artifact)}
-                      >
-                        <span>{artifact.kind}</span>
-                        <strong>{artifactName(artifact)}</strong>
-                        <small>{formatBytes(artifact.size_bytes)}</small>
-                      </button>
-                    ))}
+                    {artifacts.map((artifact) => <button type="button" key={artifact.id} className={artifact.id === selectedArtifactId ? "artifact-chip active" : "artifact-chip"} onClick={() => void openArtifactPanel(artifact)}><span>{artifact.kind}</span><strong>{artifactName(artifact)}</strong><small>{formatBytes(artifact.size_bytes)}</small></button>)}
                   </div>
                 </article>
               )}
             </>
           ) : (
-            <div className="chat-empty">
-              <h2>Owner에게 작업을 요청하세요</h2>
-              <p>왼쪽에서 프로젝트와 채팅을 고르면 사용자와 Owner의 대화가 여기에 표시됩니다.</p>
-            </div>
+            <div className="chat-empty"><h2>Owner에게 작업을 요청하세요</h2><p>왼쪽에서 프로젝트와 채팅을 고르면 사용자와 Owner의 대화가 여기에 표시됩니다.</p></div>
           )}
         </section>
 
-        <footer className="composer">
-          <input
-            type="text"
-            value={draftMessage}
-            onChange={(event) => setDraftMessage(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void handleSendMessage();
-            }}
-            placeholder="Owner에게 작업을 부탁하세요"
-            disabled={isSendingMessage || !selectedConversation}
-          />
-          <button type="button" onClick={handleSendMessage} disabled={!draftMessage.trim() || isSendingMessage || !selectedConversation}>
-            {isSendingMessage ? "전송 중" : "보내기"}
-          </button>
+        <footer className="composer codex-composer">
+          {pendingAttachmentFiles.length > 0 && (
+            <div className="pending-attachment-list">
+              {pendingAttachmentFiles.map((file, index) => (
+                <span key={`${file.name}-${index}`} className="pending-attachment-chip">
+                  📎 <strong>{file.name}</strong><small>{formatBytes(file.size)}</small>
+                  <button type="button" aria-label="첨부 제거" onClick={() => removePendingAttachment(index)}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="composer-input-row">
+            <input
+              type="text"
+              value={draftMessage}
+              onChange={(event) => setDraftMessage(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") void handleSendMessage(); }}
+              placeholder="후속 변경 사항을 부탁하세요"
+              disabled={isSendingMessage || !selectedConversation}
+            />
+            <button className="composer-send-button" type="button" onClick={handleSendMessage} disabled={(!draftMessage.trim() && pendingAttachmentFiles.length === 0) || isSendingMessage || !selectedConversation}>
+              {isSendingMessage ? "…" : "↑"}
+            </button>
+          </div>
+          <div className="composer-toolbar">
+            <div className="composer-left-tools">
+              <label className="composer-icon-action" title="파일 첨부">
+                ＋
+                <input className="composer-file-input" type="file" multiple onChange={(event) => handleComposerFiles(event.target.files)} />
+              </label>
+              <select className="composer-permission-select" value={effectivePermissionMode} onChange={(event) => handleComposerPermissionChange(event.target.value)} title="권한 설정">
+                {(settings?.available_approval_modes ?? [effectivePermissionMode]).map((mode) => <option key={mode} value={mode}>{permissionModeLabel(mode)}</option>)}
+              </select>
+            </div>
+            <div className="composer-right-tools">
+              <button type="button" className="composer-tool-button" onClick={handleVoiceInputPlaceholder} title="Whisper 음성 입력 예정">🎙</button>
+            </div>
+          </div>
         </footer>
         {sendError && <p className="error">전송 실패: {sendError}</p>}
         {actionError && <p className="error">작업 실패: {actionError}</p>}
@@ -917,199 +808,33 @@ export function PersonalModeDashboard() {
 
           {selectedArtifact ? renderArtifactPanel() : activeInspectorMode === "overview" ? (
             <section className="review-panel overview-inspector-panel">
-              <header className="review-changes-titlebar">
-                <h3>Overview</h3>
-                <span className={statusClass(selectedAttempt?.status)}>{statusLabel(selectedAttempt?.status)}</span>
-              </header>
+              <header className="review-changes-titlebar"><h3>Overview</h3><span className={statusClass(selectedAttempt?.status)}>{statusLabel(selectedAttempt?.status)}</span></header>
               <div className="overview-grid">
-                <article className="status-card">
-                  <span>Task</span>
-                  {selectedTask ? (
-                    <>
-                      <strong>{selectedTask.title}</strong>
-                      <span className={statusClass(selectedTask.status)}>{statusLabel(selectedTask.status)}</span>
-                      <p>{selectedTask.instructions}</p>
-                    </>
-                  ) : (
-                    <p className="empty-state">선택된 Task가 없습니다.</p>
-                  )}
-                </article>
-                <article className="status-card">
-                  <span>Attempt</span>
-                  {selectedAttempt ? (
-                    <>
-                      <strong>Attempt #{selectedAttempt.attempt_number}</strong>
-                      <span className={statusClass(selectedAttempt.status)}>{statusLabel(selectedAttempt.status)}</span>
-                      {selectedAttempt.result_summary && <p>{selectedAttempt.result_summary}</p>}
-                      <code>{selectedAttempt.id}</code>
-                    </>
-                  ) : (
-                    <p className="empty-state">선택된 Attempt가 없습니다.</p>
-                  )}
-                </article>
-                {latestWorkerRun && (
-                  <article className="status-card">
-                    <span>WorkerRun</span>
-                    <strong>{shortId(latestWorkerRun.id)}</strong>
-                    <span className={statusClass(latestWorkerRun.status)}>{statusLabel(latestWorkerRun.status)}</span>
-                    <small>{latestWorkerRun.adapter_kind}</small>
-                    {latestWorkerRun.error_message && <p className="error-inline">{latestWorkerRun.error_message}</p>}
-                  </article>
-                )}
-                {worktree && (
-                  <article className="status-card">
-                    <span>Worktree</span>
-                    <strong>{statusLabel(worktree.status)}</strong>
-                    <code>{worktree.branch_name}</code>
-                    <small>{worktree.worktree_path}</small>
-                  </article>
-                )}
-                {selectedRepository && (
-                  <article className="status-card">
-                    <span>Repository</span>
-                    <strong>{selectedRepository.repository_name}</strong>
-                    <small>{selectedRepository.repository_path}</small>
-                  </article>
-                )}
-                <article className="status-card">
-                  <span>Artifacts</span>
-                  {artifacts.length > 0 ? (
-                    <div className="artifact-mini-list">
-                      {artifacts.map((artifact) => (
-                        <button type="button" key={artifact.id} className="artifact-mini-row" onClick={() => void openArtifactPanel(artifact)}>
-                          <strong>{artifact.kind}</strong>
-                          <small>{artifactName(artifact)} · {formatBytes(artifact.size_bytes)}</small>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="empty-state">생성된 artifact가 없습니다.</p>
-                  )}
-                </article>
-                <article className="status-card">
-                  <span>AgentRun</span>
-                  <select value={selectedAgentRunId || ""} onChange={(event) => setSelectedAgentRunId(event.target.value || null)}>
-                    <option value="">실행 선택</option>
-                    {agentRuns.map((run) => (
-                      <option key={run.id} value={run.id}>{shortId(run.id)} · {statusLabel(run.status)} · {run.purpose}</option>
-                    ))}
-                  </select>
-                </article>
-                {visibleApprovals.length > 0 && (
-                  <article className="status-card">
-                    <span>Approval Requests</span>
-                    {visibleApprovals.map((approval) => (
-                      <p key={approval.id}>{approval.title} · {statusLabel(approval.status)}</p>
-                    ))}
-                  </article>
-                )}
-                {toolCalls.length > 0 && (
-                  <article className="status-card">
-                    <span>Raw Tool Calls</span>
-                    <pre>{JSON.stringify(toolCalls, null, 2)}</pre>
-                  </article>
-                )}
-                <article className="grant-card">
-                  <h3>권한</h3>
-                  <p>{settings?.active_grant_placeholder || "[Grant 정보 없음]"}</p>
-                  <small>Updated {formatDate(selectedConversation?.updated_at)}</small>
-                </article>
+                <article className="status-card"><span>Task</span>{selectedTask ? <><strong>{selectedTask.title}</strong><span className={statusClass(selectedTask.status)}>{statusLabel(selectedTask.status)}</span><p>{selectedTask.instructions}</p></> : <p className="empty-state">선택된 Task가 없습니다.</p>}</article>
+                <article className="status-card"><span>Attempt</span>{selectedAttempt ? <><strong>Attempt #{selectedAttempt.attempt_number}</strong><span className={statusClass(selectedAttempt.status)}>{statusLabel(selectedAttempt.status)}</span>{selectedAttempt.result_summary && <p>{selectedAttempt.result_summary}</p>}<code>{selectedAttempt.id}</code></> : <p className="empty-state">선택된 Attempt가 없습니다.</p>}</article>
+                {latestWorkerRun && <article className="status-card"><span>WorkerRun</span><strong>{shortId(latestWorkerRun.id)}</strong><span className={statusClass(latestWorkerRun.status)}>{statusLabel(latestWorkerRun.status)}</span><small>{latestWorkerRun.adapter_kind}</small>{latestWorkerRun.error_message && <p className="error-inline">{latestWorkerRun.error_message}</p>}</article>}
+                {worktree && <article className="status-card"><span>Worktree</span><strong>{statusLabel(worktree.status)}</strong><code>{worktree.branch_name}</code><small>{worktree.worktree_path}</small></article>}
+                {selectedRepository && <article className="status-card"><span>Repository</span><strong>{selectedRepository.repository_name}</strong><small>{selectedRepository.repository_path}</small></article>}
+                <article className="status-card"><span>Artifacts</span>{artifacts.length > 0 ? <div className="artifact-mini-list">{artifacts.map((artifact) => <button type="button" key={artifact.id} className="artifact-mini-row" onClick={() => void openArtifactPanel(artifact)}><strong>{artifact.kind}</strong><small>{artifactName(artifact)} · {formatBytes(artifact.size_bytes)}</small></button>)}</div> : <p className="empty-state">생성된 artifact가 없습니다.</p>}</article>
+                <article className="status-card"><span>AgentRun</span><select value={selectedAgentRunId || ""} onChange={(event) => setSelectedAgentRunId(event.target.value || null)}><option value="">실행 선택</option>{agentRuns.map((run) => <option key={run.id} value={run.id}>{shortId(run.id)} · {statusLabel(run.status)} · {run.purpose}</option>)}</select></article>
+                {visibleApprovals.length > 0 && <article className="status-card"><span>Approval Requests</span>{visibleApprovals.map((approval) => <p key={approval.id}>{approval.title} · {statusLabel(approval.status)}</p>)}</article>}
+                {toolCalls.length > 0 && <article className="status-card"><span>Raw Tool Calls</span><pre>{JSON.stringify(toolCalls, null, 2)}</pre></article>}
               </div>
             </section>
           ) : (
             <section className="review-panel review-changes-panel">
-              <header className="review-changes-titlebar">
-                <div>
-                  <h3>Review Changes</h3>
-                  <p>{selectedTask?.title ?? "선택된 Task 없음"}</p>
-                </div>
-                <div className="review-actions">
-                  <button type="button" className="review-icon-button" title="전체 펼치기" onClick={expandAllDiffFiles}>▦</button>
-                  <button type="button" className="review-icon-button" title="전체 접기" onClick={collapseAllDiffFiles}>⌃</button>
-                  <button type="button" className="review-icon-button" title="검색은 다음 PR에서 연결">⌕</button>
-                </div>
-              </header>
-
-              <div className="review-change-summary">
-                <span>{diffFiles.length} files changed</span>
-                <strong className="diff-addition">+{totalAdditions}</strong>
-                <strong className="diff-deletion">-{totalDeletions}</strong>
-                {diff?.truncated && <span className="status-pill danger">truncated</span>}
-              </div>
-
-              {diffFiles.length > 0 ? (
-                <div className="changed-file-list">
-                  {diffFiles.map((file) => {
-                    const expanded = expandedDiffFileIds.includes(file.id);
-                    return (
-                      <article key={file.id} className="changed-file-card">
-                        <button type="button" className="changed-file-header" onClick={() => toggleDiffFile(file.id)}>
-                          <span className="file-icon">◆</span>
-                          <strong>{file.path}</strong>
-                          <span className="diff-addition">+{file.additions}</span>
-                          <span className="diff-deletion">-{file.deletions}</span>
-                          <span>{expanded ? "⌄" : "›"}</span>
-                        </button>
-                        {expanded && (
-                          <div className="diff-line-table">
-                            {file.lines.map((line, index) => (
-                              <div key={`${file.id}-${index}`} className={`diff-line ${line.kind}`}>
-                                <span className="diff-line-no">{line.oldLine ?? ""}</span>
-                                <span className="diff-line-no">{line.newLine ?? ""}</span>
-                                <code>{line.text}</code>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="empty-review">
-                  <h2>표시할 코드 변경이 없습니다</h2>
-                  <p>Worker가 result commit을 만들거나 worktree diff가 생기면 여기에 파일별 변경 내용이 표시됩니다.</p>
-                </div>
-              )}
+              <header className="review-changes-titlebar"><div><h3>Review Changes</h3><p>{selectedTask?.title ?? "선택된 Task 없음"}</p></div><div className="review-actions"><button type="button" className="review-icon-button" title="전체 펼치기" onClick={expandAllDiffFiles}>▦</button><button type="button" className="review-icon-button" title="전체 접기" onClick={collapseAllDiffFiles}>⌃</button><button type="button" className="review-icon-button" title="검색은 다음 PR에서 연결">⌕</button></div></header>
+              <div className="review-change-summary"><span>{diffFiles.length} files changed</span><strong className="diff-addition">+{totalAdditions}</strong><strong className="diff-deletion">-{totalDeletions}</strong>{diff?.truncated && <span className="status-pill danger">truncated</span>}</div>
+              {diffFiles.length > 0 ? <div className="changed-file-list">{diffFiles.map((file) => { const expanded = expandedDiffFileIds.includes(file.id); return <article key={file.id} className="changed-file-card"><button type="button" className="changed-file-header" onClick={() => toggleDiffFile(file.id)}><span className="file-icon">◆</span><strong>{file.path}</strong><span className="diff-addition">+{file.additions}</span><span className="diff-deletion">-{file.deletions}</span><span>{expanded ? "⌄" : "›"}</span></button>{expanded && <div className="diff-line-table">{file.lines.map((line, index) => <div key={`${file.id}-${index}`} className={`diff-line ${line.kind}`}><span className="diff-line-no">{line.oldLine ?? ""}</span><span className="diff-line-no">{line.newLine ?? ""}</span><code>{line.text}</code></div>)}</div>}</article>; })}</div> : <div className="empty-review"><h2>표시할 코드 변경이 없습니다</h2><p>Worker가 result commit을 만들거나 worktree diff가 생기면 여기에 파일별 변경 내용이 표시됩니다.</p></div>}
             </section>
           )}
         </aside>
       )}
 
-      <TextInputDialog
-        open={renameProject !== null}
-        title="프로젝트 이름 변경"
-        label="프로젝트 이름"
-        initialValue={renameProject?.name ?? ""}
-        onOpenChange={(open) => !open && setRenameProject(null)}
-        onSubmit={(value) => renameProject && handleRenameProject(renameProject, value)}
-      />
-      <ConfirmDialog
-        open={removeProjectTarget !== null}
-        title="프로젝트 제거"
-        description="이 프로젝트를 목록에서 제거합니다. 로컬 파일은 삭제하지 않습니다."
-        confirmLabel="제거하기"
-        destructive
-        onOpenChange={(open) => !open && setRemoveProjectTarget(null)}
-        onConfirm={() => removeProjectTarget && handleRemoveProject(removeProjectTarget)}
-      />
-      <TextInputDialog
-        open={renameConversation !== null}
-        title="채팅 이름 변경"
-        label="채팅 이름"
-        initialValue={renameConversation?.title ?? ""}
-        onOpenChange={(open) => !open && setRenameConversation(null)}
-        onSubmit={(value) => renameConversation && handleRenameConversation(renameConversation, value)}
-      />
-      <ConfirmDialog
-        open={removeConversationTarget !== null}
-        title="채팅 제거"
-        description="이 채팅을 목록에서 제거합니다."
-        confirmLabel="제거하기"
-        destructive
-        onOpenChange={(open) => !open && setRemoveConversationTarget(null)}
-        onConfirm={() => removeConversationTarget && handleRemoveConversation(removeConversationTarget)}
-      />
+      <TextInputDialog open={renameProject !== null} title="프로젝트 이름 변경" label="프로젝트 이름" initialValue={renameProject?.name ?? ""} onOpenChange={(open) => !open && setRenameProject(null)} onSubmit={(value) => renameProject && handleRenameProject(renameProject, value)} />
+      <ConfirmDialog open={removeProjectTarget !== null} title="프로젝트 제거" description="이 프로젝트를 목록에서 제거합니다. 로컬 파일은 삭제하지 않습니다." confirmLabel="제거하기" destructive onOpenChange={(open) => !open && setRemoveProjectTarget(null)} onConfirm={() => removeProjectTarget && handleRemoveProject(removeProjectTarget)} />
+      <TextInputDialog open={renameConversation !== null} title="채팅 이름 변경" label="채팅 이름" initialValue={renameConversation?.title ?? ""} onOpenChange={(open) => !open && setRenameConversation(null)} onSubmit={(value) => renameConversation && handleRenameConversation(renameConversation, value)} />
+      <ConfirmDialog open={removeConversationTarget !== null} title="채팅 제거" description="이 채팅을 목록에서 제거합니다." confirmLabel="제거하기" destructive onOpenChange={(open) => !open && setRemoveConversationTarget(null)} onConfirm={() => removeConversationTarget && handleRemoveConversation(removeConversationTarget)} />
     </div>
   );
 }
