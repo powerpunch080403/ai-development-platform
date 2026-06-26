@@ -1,0 +1,346 @@
+.antigravity-review-shell {
+  background: #111112;
+  color: #e4e4e7;
+}
+
+.antigravity-review-shell .review-topbar,
+.antigravity-review-topbar {
+  min-height: 48px;
+  border-bottom-color: #27272a;
+  background: #111112;
+}
+
+.antigravity-review-shell .tab-button {
+  color: #a1a1aa;
+  background: transparent;
+  border-color: transparent;
+}
+
+.antigravity-review-shell .tab-button.active,
+.antigravity-review-shell .tab-button:hover:not(:disabled) {
+  color: #f4f4f5;
+  background: #27272a;
+  border-color: #3f3f46;
+}
+
+.antigravity-review-shell .panel-toggle {
+  color: #a1a1aa;
+  background: transparent;
+  border-color: #3f3f46;
+}
+
+.antigravity-review-shell .review-panel {
+  background: #111112;
+  color: #e4e4e7;
+  padding: 0;
+}
+
+.overview-inspector-panel,
+.review-changes-panel,
+.artifact-inspector-panel {
+  overflow: auto;
+}
+
+.review-changes-titlebar,
+.artifact-inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #27272a;
+  background: #111112;
+}
+
+.review-changes-titlebar h3,
+.artifact-inspector-header h3 {
+  margin: 0;
+  color: #f4f4f5;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.review-changes-titlebar p,
+.artifact-inspector-header p {
+  margin: 2px 0 0;
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.review-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.review-icon-button {
+  min-height: 30px;
+  width: 30px;
+  padding: 0;
+  border: 0;
+  color: #a1a1aa;
+  background: transparent;
+}
+
+.review-icon-button:hover:not(:disabled) {
+  color: #ffffff;
+  background: #27272a;
+}
+
+.review-change-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #27272a;
+  color: #a1a1aa;
+  background: #111112;
+  font-size: 13px;
+}
+
+.diff-addition {
+  color: #22c55e;
+}
+
+.diff-deletion {
+  color: #ef4444;
+}
+
+.changed-file-list {
+  display: grid;
+  gap: 0;
+}
+
+.changed-file-card {
+  border-bottom: 1px solid #27272a;
+  background: #111112;
+}
+
+.changed-file-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  color: #e4e4e7;
+  background: #151516;
+  text-align: left;
+}
+
+.changed-file-header:hover:not(:disabled) {
+  background: #1f1f22;
+}
+
+.changed-file-header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.file-icon {
+  color: #38bdf8;
+  font-size: 11px;
+}
+
+.diff-line-table {
+  display: grid;
+  overflow-x: auto;
+  background: #0f0f10;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 42px 42px minmax(0, 1fr);
+  min-width: 640px;
+}
+
+.diff-line.meta {
+  color: #93c5fd;
+  background: #111827;
+}
+
+.diff-line.add {
+  color: #dcfce7;
+  background: rgb(22 101 52 / 24%);
+}
+
+.diff-line.remove {
+  color: #fee2e2;
+  background: rgb(127 29 29 / 28%);
+}
+
+.diff-line.context {
+  color: #d4d4d8;
+}
+
+.diff-line-no {
+  padding: 2px 7px;
+  color: #71717a;
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid #27272a;
+}
+
+.diff-line code {
+  padding: 2px 10px;
+  color: inherit;
+  white-space: pre;
+}
+
+.overview-grid {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.antigravity-review-shell .status-card,
+.antigravity-review-shell .grant-card {
+  border-color: #27272a;
+  background: #18181b;
+  color: #e4e4e7;
+}
+
+.antigravity-review-shell .status-card > span:first-child,
+.antigravity-review-shell .grant-card small {
+  color: #a1a1aa;
+}
+
+.antigravity-review-shell .status-card p,
+.antigravity-review-shell .grant-card p {
+  color: #d4d4d8;
+}
+
+.artifact-feed-card p {
+  margin: 0;
+  color: #52525b;
+}
+
+.artifact-chip-list,
+.artifact-mini-list {
+  display: grid;
+  gap: 7px;
+}
+
+.artifact-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #e4e4e7;
+  color: #27272a;
+  background: #ffffff;
+  text-align: left;
+}
+
+.artifact-chip:hover:not(:disabled),
+.artifact-chip.active {
+  background: #f4f4f5;
+  border-color: #a1a1aa;
+}
+
+.artifact-chip span,
+.artifact-chip small {
+  color: #71717a;
+  font-size: 12px;
+}
+
+.artifact-chip strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-mini-row {
+  display: grid;
+  gap: 3px;
+  justify-content: stretch;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-color: #27272a;
+  color: #e4e4e7;
+  background: #111112;
+  text-align: left;
+}
+
+.artifact-mini-row:hover:not(:disabled) {
+  background: #27272a;
+}
+
+.artifact-mini-row small {
+  color: #a1a1aa;
+}
+
+.artifact-inspector-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding-bottom: 12px;
+  background: #111112;
+}
+
+.artifact-inspector-header {
+  justify-content: flex-start;
+}
+
+.compact-button {
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
+.artifact-meta-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0 12px;
+  padding: 12px;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  background: #18181b;
+}
+
+.artifact-meta-grid span {
+  color: #a1a1aa;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.artifact-meta-grid code,
+.artifact-meta-grid small {
+  min-width: 0;
+  color: #e4e4e7;
+  overflow-wrap: anywhere;
+}
+
+.artifact-text-view {
+  margin: 0 12px;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  color: #e4e4e7;
+  background: #0f0f10;
+}
+
+.antigravity-review-shell .empty-review {
+  color: #a1a1aa;
+}
+
+.antigravity-review-shell .empty-review h2 {
+  color: #f4f4f5;
+}
