@@ -15,6 +15,7 @@ ACTION_CATALOG: list[ActionPolicyDefinition] = [
     ActionPolicyDefinition("project.list", "R0", "allow", "List projects"),
     ActionPolicyDefinition("project.create", "R1", "allow", "Create a project"),
     ActionPolicyDefinition("repository.register", "R1", "allow", "Register a repository"),
+    ActionPolicyDefinition("repository.list", "R0", "allow", "List repositories"),
     ActionPolicyDefinition("repository.get_status", "R0", "allow", "Get repository status"),
     ActionPolicyDefinition("repository.check_dirty", "R0", "allow", "Check if repository is dirty"),
     ActionPolicyDefinition("conversation.create", "R0", "allow", "Create conversation"),
