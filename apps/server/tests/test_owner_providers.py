@@ -2,9 +2,10 @@ import sys
 
 from sqlalchemy import select
 
-from aidp_server.db.models import ApprovalRequest, AgentRun, Message, Task, WorkerRun
+from aidp_server.db.models import ApprovalRequest, AgentRun, AuditEvent, Message, Task, WorkerRun
 from conftest import AppHarness
 from test_conversations_and_tools import authenticate, create_conversation, create_project
+
 
 
 def test_start_queued_agent_run_invokes_fake_provider(app_harness: AppHarness) -> None:
@@ -40,6 +41,7 @@ def test_start_queued_agent_run_invokes_fake_provider(app_harness: AppHarness) -
         assert run.completed_at is not None
 
 
+
 def test_fake_provider_rejected_by_default(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     project_id = create_project(app_harness)
@@ -64,6 +66,7 @@ def test_fake_provider_rejected_by_default(app_harness: AppHarness) -> None:
     assert start_resp.json()["detail"] == "Fake owner provider is not allowed"
 
 
+
 def test_unknown_provider_rejected(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     project_id = create_project(app_harness)
@@ -86,6 +89,7 @@ def test_unknown_provider_rejected(app_harness: AppHarness) -> None:
     )
     assert start_resp.status_code == 400
     assert "Unknown owner provider kind" in start_resp.json()["detail"]
+
 
 
 def test_future_provider_kinds_fail_as_not_implemented(app_harness: AppHarness) -> None:
@@ -113,6 +117,7 @@ def test_future_provider_kinds_fail_as_not_implemented(app_harness: AppHarness) 
     assert start_resp.json()["error_code"] == "owner_provider_not_implemented"
 
 
+
 def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
     authenticate(app_harness)
     project_id = create_project(app_harness)
@@ -138,8 +143,6 @@ def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
     assert start_resp.json()["error_code"] == "owner_provider_not_connected"
 
     with app_harness.session_factory() as session:
-        from aidp_server.db.models import AuditEvent
-
         run = session.get(AgentRun, run_id)
         assert run is not None
         assert run.status.value == "failed"
@@ -162,6 +165,7 @@ def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
         assert audit.metadata_json["task_side_effects_performed"] is False
         assert audit.metadata_json["worker_side_effects_performed"] is False
         assert audit.metadata_json["approval_side_effects_performed"] is False
+
 
 
 def test_codex_cli_provider_bridge_spike_safe_invocation(app_harness: AppHarness) -> None:
@@ -190,8 +194,6 @@ def test_codex_cli_provider_bridge_spike_safe_invocation(app_harness: AppHarness
     assert start_resp.json()["status"] == "completed"
 
     with app_harness.session_factory() as session:
-        from aidp_server.db.models import AuditEvent
-
         run = session.get(AgentRun, run_id)
         assert run is not None
         assert run.status.value == "completed"
@@ -214,6 +216,7 @@ def test_codex_cli_provider_bridge_spike_safe_invocation(app_harness: AppHarness
         assert audit.metadata_json["worker_side_effects_performed"] is False
         assert audit.metadata_json["approval_side_effects_performed"] is False
         assert audit.metadata_json["codex_cli_command"] == "codex"
+
 
 
 def test_codex_cli_prompt_mode_appends_assistant_message(app_harness: AppHarness) -> None:
@@ -260,6 +263,73 @@ def test_codex_cli_prompt_mode_appends_assistant_message(app_harness: AppHarness
         )
         assert assistant_message is not None
         assert assistant_message.content == "Owner echo: hello owner"
+
+
+
+def test_codex_cli_prompt_mode_maps_usage_limit_failure(app_harness: AppHarness) -> None:
+    authenticate(app_harness)
+    app_harness.settings.allow_real_codex_owner_provider = True
+    app_harness.settings.codex_cli_mode = "prompt"
+    app_harness.settings.codex_cli_command = sys.executable
+    app_harness.settings.codex_cli_prompt_args = (
+        "-c \"import sys; sys.stderr.write('ERROR: You have hit your usage limit. '
+        "'Try again at Jun 28th, 2026 8:09 PM.'); sys.exit(1)\""
+    )
+
+    project_id = create_project(app_harness)
+    conversation = create_conversation(app_harness, project_id)
+    conversation_id = str(conversation["id"])
+    message_resp = app_harness.client.post(
+        f"/conversations/{conversation_id}/messages",
+        json={"role": "user", "content": "hello owner", "content_type": "text"},
+    )
+    assert message_resp.status_code == 201
+    message_id = message_resp.json()["id"]
+
+    run_resp = app_harness.client.post(
+        "/agent-runs",
+        json={
+            "conversation_id": conversation_id,
+            "project_id": project_id,
+            "purpose": "Usage limit test",
+            "input_message_id": message_id,
+        },
+    )
+    assert run_resp.status_code == 201
+    run_id = run_resp.json()["id"]
+
+    start_resp = app_harness.client.post(
+        f"/agent-runs/{run_id}/start",
+        json={"provider_kind": "codex_cli"},
+    )
+    assert start_resp.status_code == 200
+    body = start_resp.json()
+    assert body["status"] == "failed"
+    assert body["error_code"] == "owner_provider_usage_limit"
+    assert body["error_message"] == (
+        "Codex usage limit reached. Try again at Jun 28th, 2026 8:09 PM."
+    )
+
+    with app_harness.session_factory() as session:
+        run = session.get(AgentRun, run_id)
+        assert run is not None
+        assert run.error_code == "owner_provider_usage_limit"
+        assert run.error_message == body["error_message"]
+
+        assistant_message = session.scalar(
+            select(Message).where(Message.agent_run_id == run_id, Message.role == "assistant")
+        )
+        assert assistant_message is None
+
+        audit = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.event_type == "owner_runtime.prompt_failed",
+                AuditEvent.agent_run_id == run_id,
+            )
+        )
+        assert audit is not None
+        assert audit.metadata_json["usage_limit"] is True
+
 
 
 def test_keyword_routing_is_prohibited_during_start(
