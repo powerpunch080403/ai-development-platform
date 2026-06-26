@@ -1,0 +1,138 @@
+.composer.codex-composer {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  width: min(760px, calc(100% - 56px));
+  margin: 0 auto 20px;
+  padding: 10px;
+  border: 1px solid #e4e4e7;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 36px rgb(24 24 27 / 10%);
+}
+
+.composer-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.composer-left-tools,
+.composer-right-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.composer-icon-action,
+.composer-tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #52525b;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.composer-icon-action:hover,
+.composer-tool-button:hover:not(:disabled) {
+  color: #18181b;
+  background: #f4f4f5;
+}
+
+.composer-tool-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.composer-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.composer-permission-select {
+  width: auto;
+  min-height: 32px;
+  max-width: 180px;
+  padding: 5px 28px 5px 10px;
+  border-color: transparent;
+  border-radius: 10px;
+  color: #52525b;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.composer-permission-select:hover,
+.composer-permission-select:focus {
+  color: #18181b;
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+  box-shadow: none;
+}
+
+.pending-attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pending-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  color: #3f3f46;
+  background: #f8fafc;
+  font-size: 12px;
+}
+
+.pending-attachment-chip strong {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-attachment-chip button {
+  min-height: 20px;
+  width: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: #71717a;
+  background: transparent;
+}
+
+.pending-attachment-chip button:hover:not(:disabled) {
+  color: #18181b;
+  background: #e4e4e7;
+}
+
+.composer-send-button {
+  min-width: 42px;
+}
