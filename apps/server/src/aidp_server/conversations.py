@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -449,9 +449,52 @@ def update_agent_run_status(
     return run_view(run)
 
 
+def run_owner_provider_background(
+    run_id: str,
+    provider_kind: str,
+    settings: Settings,
+    bind: Any,
+) -> None:
+    from aidp_server.owner_providers import get_owner_provider
+
+    with Session(bind=bind, autoflush=False, expire_on_commit=False) as background_session:
+        run = background_session.get(AgentRun, run_id)
+        if run is None:
+            return
+
+        try:
+            provider = get_owner_provider(provider_kind, settings)
+            provider.start_agent_run(background_session, run)
+            background_session.commit()
+        except Exception as exc:
+            background_session.rollback()
+            run = background_session.get(AgentRun, run_id)
+            if run is None:
+                return
+
+            now = datetime.now(timezone.utc)
+            run.status = AgentRunStatus.FAILED
+            run.started_at = run.started_at or now
+            run.failed_at = now
+            run.error_code = "owner_provider_unhandled_exception"
+            run.error_message = str(exc)[:4000] or exc.__class__.__name__
+            record_audit_event(
+                background_session,
+                event_type="owner_runtime.unhandled_exception",
+                message=run.error_message,
+                local_user_id=run.local_user_id,
+                agent_run_id=run.id,
+                conversation_id=run.conversation_id,
+                project_id=run.project_id,
+                metadata={"provider_kind": provider_kind},
+            )
+            background_session.commit()
+
+
 @router.post("/agent-runs/{run_id}/start", response_model=AgentRunView)
 def start_agent_run(
     run_id: str,
+    background_tasks: BackgroundTasks,
     request: StartAgentRunRequest,
     current: CurrentAuth,
     session: Annotated[Session, Depends(get_session)],
@@ -470,13 +513,36 @@ def start_agent_run(
         raise HTTPException(status_code=403, detail="Fake owner provider is not allowed")
 
     try:
-        provider = get_owner_provider(provider_kind, settings)
+        get_owner_provider(provider_kind, settings)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    provider.start_agent_run(session, run)
+    now = datetime.now(timezone.utc)
+    run.status = AgentRunStatus.RUNNING_MODEL
+    run.started_at = now
+    run.completed_at = None
+    run.failed_at = None
+    run.cancelled_at = None
+    run.error_code = None
+    run.error_message = None
+
+    record_audit_event(
+        session,
+        event_type="agent_run.started",
+        message="Agent run handed off to Owner provider runtime.",
+        local_user_id=current.user.id,
+        device_id=current.device.id,
+        session_id=current.runtime_session.id,
+        agent_run_id=run.id,
+        conversation_id=run.conversation_id,
+        project_id=run.project_id,
+        metadata={"provider_kind": provider_kind},
+    )
+
+    bind = session.get_bind()
     session.commit()
 
+    background_tasks.add_task(run_owner_provider_background, run.id, provider_kind, settings, bind)
     return run_view(run)
 
 

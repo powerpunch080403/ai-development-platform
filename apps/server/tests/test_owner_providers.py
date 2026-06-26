@@ -30,7 +30,7 @@ def test_start_queued_agent_run_invokes_fake_provider(app_harness: AppHarness) -
         json={"provider_kind": "fake"},
     )
     assert start_resp.status_code == 200
-    assert start_resp.json()["status"] == "completed"
+    assert start_resp.json()["status"] == "running_model"
 
     with app_harness.session_factory() as session:
         run = session.get(AgentRun, run_id)
@@ -109,8 +109,13 @@ def test_future_provider_kinds_fail_as_not_implemented(app_harness: AppHarness) 
         json={"provider_kind": "local_ai"},
     )
     assert start_resp.status_code == 200
-    assert start_resp.json()["status"] == "failed"
-    assert start_resp.json()["error_code"] == "owner_provider_not_implemented"
+    assert start_resp.json()["status"] == "running_model"
+
+    with app_harness.session_factory() as session:
+        run = session.get(AgentRun, run_id)
+        assert run is not None
+        assert run.status.value == "failed"
+        assert run.error_code == "owner_provider_not_implemented"
 
 
 def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
@@ -134,8 +139,7 @@ def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
         json={},
     )
     assert start_resp.status_code == 200
-    assert start_resp.json()["status"] == "failed"
-    assert start_resp.json()["error_code"] == "owner_provider_not_connected"
+    assert start_resp.json()["status"] == "running_model"
 
     with app_harness.session_factory() as session:
         run = session.get(AgentRun, run_id)
@@ -185,7 +189,7 @@ def test_codex_cli_provider_bridge_spike_safe_invocation(app_harness: AppHarness
         json={"provider_kind": "codex_cli"},
     )
     assert start_resp.status_code == 200
-    assert start_resp.json()["status"] == "completed"
+    assert start_resp.json()["status"] == "running_model"
 
     with app_harness.session_factory() as session:
         run = session.get(AgentRun, run_id)
@@ -248,7 +252,7 @@ def test_codex_cli_prompt_mode_appends_assistant_message(app_harness: AppHarness
         json={"provider_kind": "codex_cli"},
     )
     assert start_resp.status_code == 200
-    assert start_resp.json()["status"] == "completed"
+    assert start_resp.json()["status"] == "running_model"
 
     with app_harness.session_factory() as session:
         assistant_message = session.scalar(
@@ -296,9 +300,8 @@ def test_codex_cli_prompt_mode_maps_usage_limit_failure(app_harness: AppHarness)
     )
     assert start_resp.status_code == 200
     body = start_resp.json()
-    assert body["status"] == "failed"
-    assert body["error_code"] == "owner_provider_usage_limit"
-    assert body["error_message"] == (
+    assert body["status"] == "running_model"
+    expected_error_message = (
         "Codex usage limit reached. Try again at Jun 28th, 2026 8:09 PM."
     )
 
@@ -306,7 +309,7 @@ def test_codex_cli_prompt_mode_maps_usage_limit_failure(app_harness: AppHarness)
         run = session.get(AgentRun, run_id)
         assert run is not None
         assert run.error_code == "owner_provider_usage_limit"
-        assert run.error_message == body["error_message"]
+        assert run.error_message == expected_error_message
 
         assistant_message = session.scalar(
             select(Message).where(Message.agent_run_id == run_id, Message.role == "assistant")
