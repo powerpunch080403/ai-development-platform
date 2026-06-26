@@ -33,6 +33,8 @@ class Settings(BaseSettings):
 
     allow_real_codex_owner_provider: bool = False
     codex_cli_command: str = "codex"
+    codex_cli_mode: str = "bridge_spike"
+    codex_cli_prompt_args: str = "exec -"
     codex_cli_timeout_seconds: int = 120
 
     allow_fake_owner_provider: bool = False
