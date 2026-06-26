@@ -511,13 +511,38 @@ export function PersonalModeDashboard() {
       const message = await appendMessage(selectedConversation.id, { role: "user", content, content_type: "text" });
       const purpose = content.slice(0, 50) + (content.length > 50 ? "..." : "");
       const run = await createAgentRun({ conversation_id: selectedConversation.id, project_id: selectedConversation.project_id || undefined, purpose, input_message_id: message.id });
-      await startAgentRun(run.id);
+      const conversationId = selectedConversation.id;
       setDraftMessage(""); setPendingAttachmentFiles([]);
-      setMessages(await listMessages(selectedConversation.id));
-      setAgentRuns(await listAgentRuns(selectedConversation.id));
+      setMessages((current) => [...current, message]);
+      setAgentRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
       setSelectedAgentRunId(run.id);
-      setAgentRunSteps(await listAgentRunSteps(run.id));
-      setToolCalls(await listToolCalls(run.id));
+      setAgentRunSteps([]);
+      setToolCalls([]);
+      setIsSendingMessage(false);
+
+      void startAgentRun(run.id)
+        .then(async () => {
+          const runs = await listAgentRuns(conversationId);
+          const latest = runs[0] ?? run;
+          const [nextMessages, nextSteps, nextToolCalls] = await Promise.all([
+            listMessages(conversationId),
+            listAgentRunSteps(latest.id),
+            listToolCalls(latest.id),
+          ]);
+          setMessages(nextMessages);
+          setAgentRuns(runs);
+          setSelectedAgentRunId(latest.id);
+          setAgentRunSteps(nextSteps);
+          setToolCalls(nextToolCalls);
+        })
+        .catch(async (error) => {
+          setSendError(error instanceof Error ? error.message : String(error));
+          try {
+            setAgentRuns(await listAgentRuns(conversationId));
+          } catch (refreshError) {
+            console.error(refreshError);
+          }
+        });
     } catch (error) { setSendError(error instanceof Error ? error.message : String(error)); }
     finally { setIsSendingMessage(false); }
   }
