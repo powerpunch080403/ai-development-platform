@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -65,7 +65,9 @@ class StartAgentRunRequest(BaseModel):
 class UpdateAgentRunStatusRequest(BaseModel):
     status: AgentRunStatus
     error_code: str | None = Field(default=None, max_length=100)
+    error_category: str | None = Field(default=None, max_length=100)
     error_message: str | None = Field(default=None, max_length=4000)
+    retry_after: str | None = Field(default=None, max_length=200)
 
 
 class CreateAgentRunStepRequest(BaseModel):
@@ -101,13 +103,19 @@ class AgentRunView(BaseModel):
     status: str
     purpose: str
     input_message_id: str | None
+    provider_kind: str | None
+    provider_model: str | None
+    runtime_version: str | None
+    provider_metadata_json: dict[str, Any] | None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
     failed_at: datetime | None
     cancelled_at: datetime | None
     error_code: str | None
+    error_category: str | None
     error_message: str | None
+    retry_after: str | None
 
 
 class AgentRunStepView(BaseModel):
@@ -164,13 +172,33 @@ def run_view(value: AgentRun) -> AgentRunView:
         status=value.status.value,
         purpose=value.purpose,
         input_message_id=value.input_message_id,
+        provider_kind=value.provider_kind,
+        provider_model=value.provider_model,
+        runtime_version=value.runtime_version,
+        provider_metadata_json=value.provider_metadata_json,
         created_at=value.created_at,
         started_at=value.started_at,
         completed_at=value.completed_at,
         failed_at=value.failed_at,
         cancelled_at=value.cancelled_at,
         error_code=value.error_code,
+        error_category=value.error_category,
         error_message=value.error_message,
+        retry_after=value.retry_after,
+    )
+
+
+def step_view(value: AgentRunStep) -> AgentRunStepView:
+    return AgentRunStepView(
+        id=value.id,
+        agent_run_id=value.agent_run_id,
+        step_index=value.step_index,
+        step_type=value.step_type.value,
+        status=value.status.value,
+        summary=value.summary,
+        created_at=value.created_at,
+        started_at=value.started_at,
+        completed_at=value.completed_at,
     )
 
 
@@ -410,7 +438,9 @@ def update_agent_run_status(
     now = datetime.now(timezone.utc)
     run.status = request.status
     run.error_code = request.error_code
+    run.error_category = request.error_category
     run.error_message = request.error_message
+    run.retry_after = request.retry_after
     if (
         request.status not in {AgentRunStatus.QUEUED, AgentRunStatus.CANCELLED}
         and run.started_at is None
@@ -435,9 +465,60 @@ def update_agent_run_status(
     return run_view(run)
 
 
+def run_owner_provider_background(
+    run_id: str,
+    provider_kind: str,
+    settings: Settings,
+    bind: Any,
+) -> None:
+    from aidp_server.owner_providers import get_owner_provider
+
+    with Session(bind=bind, autoflush=False, expire_on_commit=False) as background_session:
+        run = background_session.get(AgentRun, run_id)
+        if run is None:
+            return
+
+        try:
+            provider = get_owner_provider(provider_kind, settings)
+            provider.start_agent_run(background_session, run)
+            background_session.commit()
+        except Exception as exc:
+            background_session.rollback()
+            run = background_session.get(AgentRun, run_id)
+            if run is None:
+                return
+
+            now = datetime.now(timezone.utc)
+            run.status = AgentRunStatus.FAILED
+            run.started_at = run.started_at or now
+            run.failed_at = now
+            run.provider_kind = provider_kind
+            run.error_code = "owner_provider_unhandled_exception"
+            run.error_category = "provider_error"
+            run.error_message = str(exc)[:4000] or exc.__class__.__name__
+            run.retry_after = None
+            run.provider_metadata_json = {
+                "provider_kind": provider_kind,
+                "exception_class": exc.__class__.__name__,
+                "source": "owner_provider_background",
+            }
+            record_audit_event(
+                background_session,
+                event_type="owner_runtime.unhandled_exception",
+                message=run.error_message,
+                local_user_id=run.local_user_id,
+                agent_run_id=run.id,
+                conversation_id=run.conversation_id,
+                project_id=run.project_id,
+                metadata={"provider_kind": provider_kind},
+            )
+            background_session.commit()
+
+
 @router.post("/agent-runs/{run_id}/start", response_model=AgentRunView)
 def start_agent_run(
     run_id: str,
+    background_tasks: BackgroundTasks,
     request: StartAgentRunRequest,
     current: CurrentAuth,
     session: Annotated[Session, Depends(get_session)],
@@ -448,23 +529,68 @@ def start_agent_run(
         raise HTTPException(status_code=400, detail="AgentRun is not in a startable state")
 
     provider_kind = request.provider_kind or "codex_cli"
+    from aidp_server.owner_providers import SUPPORTED_OWNER_PROVIDER_KINDS, get_owner_provider
 
-    if provider_kind == "fake":
-        if not settings.allow_fake_owner_provider:
-            raise HTTPException(status_code=403, detail="Fake owner provider is not allowed")
-    elif provider_kind != "codex_cli":
+    if provider_kind not in SUPPORTED_OWNER_PROVIDER_KINDS:
         raise HTTPException(status_code=400, detail=f"Unknown owner provider kind: {provider_kind}")
+    if provider_kind == "fake" and not settings.allow_fake_owner_provider:
+        raise HTTPException(status_code=403, detail="Fake owner provider is not allowed")
 
-    from aidp_server.owner_providers import get_owner_provider
     try:
-        provider = get_owner_provider(provider_kind, settings)
+        get_owner_provider(provider_kind, settings)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    provider.start_agent_run(session, run)
+    now = datetime.now(timezone.utc)
+    run.status = AgentRunStatus.RUNNING_MODEL
+    run.started_at = now
+    run.completed_at = None
+    run.failed_at = None
+    run.cancelled_at = None
+    run.provider_kind = provider_kind
+    run.provider_model = None
+    run.runtime_version = None
+    run.provider_metadata_json = {"provider_kind": provider_kind}
+    run.error_code = None
+    run.error_category = None
+    run.error_message = None
+    run.retry_after = None
+
+    record_audit_event(
+        session,
+        event_type="agent_run.started",
+        message="Agent run handed off to Owner provider runtime.",
+        local_user_id=current.user.id,
+        device_id=current.device.id,
+        session_id=current.runtime_session.id,
+        agent_run_id=run.id,
+        conversation_id=run.conversation_id,
+        project_id=run.project_id,
+        metadata={"provider_kind": provider_kind},
+    )
+
+    bind = session.get_bind()
     session.commit()
 
+    background_tasks.add_task(run_owner_provider_background, run.id, provider_kind, settings, bind)
     return run_view(run)
+
+
+@router.get("/agent-runs/{run_id}/steps", response_model=list[AgentRunStepView])
+def list_agent_run_steps(
+    run_id: str,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> list[AgentRunStepView]:
+    run = owned(session, AgentRun, run_id, current.user.id)
+    return [
+        step_view(value)
+        for value in session.scalars(
+            select(AgentRunStep)
+            .where(AgentRunStep.agent_run_id == run.id)
+            .order_by(AgentRunStep.step_index)
+        )
+    ]
 
 
 @router.post("/agent-runs/{run_id}/steps", response_model=AgentRunStepView, status_code=201)
@@ -489,7 +615,7 @@ def create_agent_run_step(
         status=request.status,
         summary=request.summary,
         started_at=now if request.status is not RecordStatus.CREATED else None,
-        completed_at=now if request.status is RecordStatus.COMPLETED else None,
+        completed_at=now if request.status is RecordStatus.SUCCEEDED else None,
     )
     session.add(step)
     session.flush()
@@ -504,14 +630,4 @@ def create_agent_run_step(
         metadata={"step_index": next_index, "step_type": request.step_type.value},
     )
     session.commit()
-    return AgentRunStepView(
-        id=step.id,
-        agent_run_id=step.agent_run_id,
-        step_index=step.step_index,
-        step_type=step.step_type.value,
-        status=step.status.value,
-        summary=step.summary,
-        created_at=step.created_at,
-        started_at=step.started_at,
-        completed_at=step.completed_at,
-    )
+    return step_view(step)
