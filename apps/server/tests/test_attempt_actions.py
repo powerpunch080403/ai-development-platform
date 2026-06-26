@@ -84,7 +84,12 @@ def test_follow_up_creates_new_attempt_under_same_task(app_harness: AppHarness) 
     assert metadata["source_attempt_id"] == source_attempt["id"]
     assert metadata["explicit_retry"] is True
     assert metadata["automatic_retry"] is False
-    
+    assert data["work_room_message"]["task_attempt_id"] == data["follow_up_attempt"]["id"]
+    metadata = data["work_room_message"]["metadata"]
+    assert metadata["action"] == "follow_up"
+    assert metadata["source_attempt_id"] == source_attempt["id"]
+    assert metadata["explicit_retry"] is True
+    assert metadata["automatic_retry"] is False
     attempts = app_harness.client.get(f"/tasks/{created_task['id']}/attempts")
     assert [attempt["attempt_number"] for attempt in attempts.json()] == [1, 2]
 
