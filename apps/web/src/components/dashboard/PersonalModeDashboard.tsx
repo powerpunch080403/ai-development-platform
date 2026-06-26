@@ -107,6 +107,20 @@ function statusClass(status?: string | null) {
   if (["running", "running_worker", "waiting_for_review", "reviewing", "created", "queued"].includes(status)) return "status-pill active";
   return "status-pill";
 }
+function isActiveAgentRunStatus(status?: string | null) {
+  return [
+    "queued",
+    "preparing_context",
+    "running_model",
+    "executing_tool",
+    "waiting_for_approval",
+    "waiting_for_user",
+    "waiting_for_worker",
+    "reviewing_worker_result",
+    "retry_scheduled",
+  ].includes(status ?? "");
+}
+
 function statusLabel(status?: string | null) {
   switch (status) {
     case "active": return "활성";
@@ -333,6 +347,41 @@ export function PersonalModeDashboard() {
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
   const latestOwnerRun = agentRuns[0];
   const effectivePermissionMode = composerPermissionMode ?? settings?.approval_mode ?? "ask_for_approval";
+  useEffect(() => {
+    if (!selectedConversation || !isActiveAgentRunStatus(latestOwnerRun?.status)) return;
+
+    let cancelled = false;
+    const refreshOwnerRun = async () => {
+      try {
+        const runs = await listAgentRuns(selectedConversation.id);
+        if (cancelled) return;
+        setAgentRuns(runs);
+
+        const latest = runs[0];
+        if (latest) {
+          setSelectedAgentRunId(latest.id);
+          const [nextMessages, nextSteps, nextToolCalls] = await Promise.all([
+            listMessages(selectedConversation.id),
+            listAgentRunSteps(latest.id),
+            listToolCalls(latest.id),
+          ]);
+          if (cancelled) return;
+          setMessages(nextMessages);
+          setAgentRunSteps(nextSteps);
+          setToolCalls(nextToolCalls);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    const interval = window.setInterval(refreshOwnerRun, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedConversation?.id, latestOwnerRun?.id, latestOwnerRun?.status]);
+
   const diffFiles = useMemo(() => parseUnifiedDiff(diff?.diff), [diff?.diff]);
   const totalAdditions = diffFiles.reduce((sum, file) => sum + file.additions, 0);
   const totalDeletions = diffFiles.reduce((sum, file) => sum + file.deletions, 0);
