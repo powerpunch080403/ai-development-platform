@@ -40,6 +40,7 @@ import {
   startAgentRun,
   updateProject,
 } from "../../api/client";
+import { ActionMenu, ConfirmDialog, TextInputDialog } from "../ui/AppPrimitives";
 
 type FeedItem =
   | { kind: "message"; time: number; item: MessageDto }
@@ -171,8 +172,10 @@ export function PersonalModeDashboard() {
 
   const [activeInspectorTab, setActiveInspectorTab] = useState<"tasks" | "review" | "files" | "details">("tasks");
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
-  const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null);
-  const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null);
+  const [renameProject, setRenameProject] = useState<ProjectDto | null>(null);
+  const [removeProjectTarget, setRemoveProjectTarget] = useState<ProjectDto | null>(null);
+  const [renameConversation, setRenameConversation] = useState<ConversationDto | null>(null);
+  const [removeConversationTarget, setRemoveConversationTarget] = useState<ConversationDto | null>(null);
   const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -429,14 +432,12 @@ export function PersonalModeDashboard() {
     }
   }
 
-  async function handleRenameConversation(conversation: ConversationDto) {
-    const nextTitle = window.prompt("채팅 이름 변경", conversation.title);
-    if (!nextTitle || nextTitle.trim() === conversation.title) return;
+  async function handleRenameConversation(conversation: ConversationDto, nextTitle: string) {
     setActionError(null);
     try {
       await conversationRequest<ConversationDto>(`/conversations/${conversation.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ title: nextTitle.trim() }),
+        body: JSON.stringify({ title: nextTitle }),
       });
       await refreshConversations();
     } catch (error) {
@@ -445,7 +446,6 @@ export function PersonalModeDashboard() {
   }
 
   async function handleRemoveConversation(conversation: ConversationDto) {
-    if (!window.confirm(`'${conversation.title}' 채팅을 제거할까요?`)) return;
     setActionError(null);
     try {
       await conversationRequest<ConversationDto>(`/conversations/${conversation.id}`, { method: "DELETE" });
@@ -464,12 +464,10 @@ export function PersonalModeDashboard() {
     );
   }
 
-  async function handleRenameProject(project: ProjectDto) {
-    const nextName = window.prompt("프로젝트 이름 변경", project.name);
-    if (!nextName || nextName.trim() === project.name) return;
+  async function handleRenameProject(project: ProjectDto, nextName: string) {
     setActionError(null);
     try {
-      await updateProject(project.id, { name: nextName.trim() });
+      await updateProject(project.id, { name: nextName });
       await refreshProjects();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
@@ -477,7 +475,6 @@ export function PersonalModeDashboard() {
   }
 
   async function handleRemoveProject(project: ProjectDto) {
-    if (!window.confirm(`'${project.name}' 프로젝트를 목록에서 제거할까요? 로컬 파일은 삭제하지 않습니다.`)) return;
     setActionError(null);
     try {
       await removeProject(project.id);
@@ -550,23 +547,14 @@ export function PersonalModeDashboard() {
         >
           <span>{isPinned ? "★ " : ""}{conversation.title}</span>
         </button>
-        <div className="conversation-menu-wrap">
-          <button
-            type="button"
-            className="conversation-icon-button"
-            title="채팅 더보기"
-            onClick={() => setOpenConversationMenuId(openConversationMenuId === conversation.id ? null : conversation.id)}
-          >
-            ⋯
-          </button>
-          {openConversationMenuId === conversation.id && (
-            <div className="project-menu conversation-menu">
-              <button type="button" onClick={() => togglePinnedConversation(conversation)}>{isPinned ? "채팅 고정 해제" : "채팅 고정"}</button>
-              <button type="button" onClick={() => void handleRenameConversation(conversation)}>채팅 이름 변경</button>
-              <button type="button" className="danger-action" onClick={() => void handleRemoveConversation(conversation)}>제거하기</button>
-            </div>
-          )}
-        </div>
+        <ActionMenu
+          ariaLabel="채팅 더보기"
+          items={[
+            { label: isPinned ? "채팅 고정 해제" : "채팅 고정", onSelect: () => togglePinnedConversation(conversation) },
+            { label: "채팅 이름 변경", onSelect: () => setRenameConversation(conversation) },
+            { label: "제거하기", destructive: true, onSelect: () => setRemoveConversationTarget(conversation) },
+          ]}
+        />
       </li>
     );
   }
@@ -609,24 +597,15 @@ export function PersonalModeDashboard() {
                       <span className="project-name">{isPinned ? "★ " : ""}{project.name}</span>
                     </button>
                     <button type="button" className="project-icon-button" title="프로젝트 새 채팅" onClick={() => void handleProjectChat(project)}>＋</button>
-                    <div className="project-menu-wrap">
-                      <button
-                        type="button"
-                        className="project-icon-button"
-                        title="더보기"
-                        onClick={() => setOpenProjectMenuId(openProjectMenuId === project.id ? null : project.id)}
-                      >
-                        ⋯
-                      </button>
-                      {openProjectMenuId === project.id && (
-                        <div className="project-menu">
-                          <button type="button" onClick={() => togglePinnedProject(project)}>{isPinned ? "프로젝트 고정 해제" : "프로젝트 고정"}</button>
-                          <button type="button" onClick={() => void handleOpenProject(project)}>탐색기에서 열기</button>
-                          <button type="button" onClick={() => void handleRenameProject(project)}>프로젝트 이름 변경</button>
-                          <button type="button" className="danger-action" onClick={() => void handleRemoveProject(project)}>제거하기</button>
-                        </div>
-                      )}
-                    </div>
+                    <ActionMenu
+                      ariaLabel="프로젝트 더보기"
+                      items={[
+                        { label: isPinned ? "프로젝트 고정 해제" : "프로젝트 고정", onSelect: () => togglePinnedProject(project) },
+                        { label: "탐색기에서 열기", onSelect: () => void handleOpenProject(project) },
+                        { label: "프로젝트 이름 변경", onSelect: () => setRenameProject(project) },
+                        { label: "제거하기", destructive: true, onSelect: () => setRemoveProjectTarget(project) },
+                      ]}
+                    />
                   </div>
                   {project.id === selectedProjectId && projectChats.length > 0 && (
                     <ul className="project-chat-list">
@@ -871,6 +850,41 @@ export function PersonalModeDashboard() {
           )}
         </aside>
       )}
+
+      <TextInputDialog
+        open={renameProject !== null}
+        title="프로젝트 이름 변경"
+        label="프로젝트 이름"
+        initialValue={renameProject?.name ?? ""}
+        onOpenChange={(open) => !open && setRenameProject(null)}
+        onSubmit={(value) => renameProject && handleRenameProject(renameProject, value)}
+      />
+      <ConfirmDialog
+        open={removeProjectTarget !== null}
+        title="프로젝트 제거"
+        description="이 프로젝트를 목록에서 제거합니다. 로컬 파일은 삭제하지 않습니다."
+        confirmLabel="제거하기"
+        destructive
+        onOpenChange={(open) => !open && setRemoveProjectTarget(null)}
+        onConfirm={() => removeProjectTarget && handleRemoveProject(removeProjectTarget)}
+      />
+      <TextInputDialog
+        open={renameConversation !== null}
+        title="채팅 이름 변경"
+        label="채팅 이름"
+        initialValue={renameConversation?.title ?? ""}
+        onOpenChange={(open) => !open && setRenameConversation(null)}
+        onSubmit={(value) => renameConversation && handleRenameConversation(renameConversation, value)}
+      />
+      <ConfirmDialog
+        open={removeConversationTarget !== null}
+        title="채팅 제거"
+        description="이 채팅을 목록에서 제거합니다."
+        confirmLabel="제거하기"
+        destructive
+        onOpenChange={(open) => !open && setRemoveConversationTarget(null)}
+        onConfirm={() => removeConversationTarget && handleRemoveConversation(removeConversationTarget)}
+      />
     </div>
   );
 }
