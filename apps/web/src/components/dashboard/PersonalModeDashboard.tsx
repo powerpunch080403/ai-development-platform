@@ -43,6 +43,7 @@ import {
   updateProject,
 } from "../../api/client";
 import { ActionMenu, ConfirmDialog, TextInputDialog } from "../ui/AppPrimitives";
+import { OwnerRunStatusBanner } from "./OwnerRunStatusBanner";
 import "./inspector-review.css";
 import "./composer-controls.css";
 
@@ -106,6 +107,20 @@ function statusClass(status?: string | null) {
   if (["running", "running_worker", "waiting_for_review", "reviewing", "created", "queued"].includes(status)) return "status-pill active";
   return "status-pill";
 }
+function isActiveAgentRunStatus(status?: string | null) {
+  return [
+    "queued",
+    "preparing_context",
+    "running_model",
+    "executing_tool",
+    "waiting_for_approval",
+    "waiting_for_user",
+    "waiting_for_worker",
+    "reviewing_worker_result",
+    "retry_scheduled",
+  ].includes(status ?? "");
+}
+
 function statusLabel(status?: string | null) {
   switch (status) {
     case "active": return "활성";
@@ -332,6 +347,41 @@ export function PersonalModeDashboard() {
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
   const latestOwnerRun = agentRuns[0];
   const effectivePermissionMode = composerPermissionMode ?? settings?.approval_mode ?? "ask_for_approval";
+  useEffect(() => {
+    if (!selectedConversation || !isActiveAgentRunStatus(latestOwnerRun?.status)) return;
+
+    let cancelled = false;
+    const refreshOwnerRun = async () => {
+      try {
+        const runs = await listAgentRuns(selectedConversation.id);
+        if (cancelled) return;
+        setAgentRuns(runs);
+
+        const latest = runs[0];
+        if (latest) {
+          setSelectedAgentRunId(latest.id);
+          const [nextMessages, nextSteps, nextToolCalls] = await Promise.all([
+            listMessages(selectedConversation.id),
+            listAgentRunSteps(latest.id),
+            listToolCalls(latest.id),
+          ]);
+          if (cancelled) return;
+          setMessages(nextMessages);
+          setAgentRunSteps(nextSteps);
+          setToolCalls(nextToolCalls);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    const interval = window.setInterval(refreshOwnerRun, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedConversation?.id, latestOwnerRun?.id, latestOwnerRun?.status]);
+
   const diffFiles = useMemo(() => parseUnifiedDiff(diff?.diff), [diff?.diff]);
   const totalAdditions = diffFiles.reduce((sum, file) => sum + file.additions, 0);
   const totalDeletions = diffFiles.reduce((sum, file) => sum + file.deletions, 0);
@@ -461,13 +511,38 @@ export function PersonalModeDashboard() {
       const message = await appendMessage(selectedConversation.id, { role: "user", content, content_type: "text" });
       const purpose = content.slice(0, 50) + (content.length > 50 ? "..." : "");
       const run = await createAgentRun({ conversation_id: selectedConversation.id, project_id: selectedConversation.project_id || undefined, purpose, input_message_id: message.id });
-      await startAgentRun(run.id);
+      const conversationId = selectedConversation.id;
       setDraftMessage(""); setPendingAttachmentFiles([]);
-      setMessages(await listMessages(selectedConversation.id));
-      setAgentRuns(await listAgentRuns(selectedConversation.id));
+      setMessages((current) => [...current, message]);
+      setAgentRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
       setSelectedAgentRunId(run.id);
-      setAgentRunSteps(await listAgentRunSteps(run.id));
-      setToolCalls(await listToolCalls(run.id));
+      setAgentRunSteps([]);
+      setToolCalls([]);
+      setIsSendingMessage(false);
+
+      void startAgentRun(run.id)
+        .then(async () => {
+          const runs = await listAgentRuns(conversationId);
+          const latest = runs[0] ?? run;
+          const [nextMessages, nextSteps, nextToolCalls] = await Promise.all([
+            listMessages(conversationId),
+            listAgentRunSteps(latest.id),
+            listToolCalls(latest.id),
+          ]);
+          setMessages(nextMessages);
+          setAgentRuns(runs);
+          setSelectedAgentRunId(latest.id);
+          setAgentRunSteps(nextSteps);
+          setToolCalls(nextToolCalls);
+        })
+        .catch(async (error) => {
+          setSendError(error instanceof Error ? error.message : String(error));
+          try {
+            setAgentRuns(await listAgentRuns(conversationId));
+          } catch (refreshError) {
+            console.error(refreshError);
+          }
+        });
     } catch (error) { setSendError(error instanceof Error ? error.message : String(error)); }
     finally { setIsSendingMessage(false); }
   }
@@ -491,7 +566,7 @@ export function PersonalModeDashboard() {
       <section className="side-group bottom-group"><div className="side-title">설정</div><p className="settings-line">승인: {permissionModeLabel(settings?.approval_mode)}</p><p className="settings-line">어댑터: {settings?.adapter_summary ?? "unknown"}</p></section>
     </aside>
 
-    <main className="codex-chat"><header className="chat-topbar"><div><h2>{selectedConversation?.title ?? "대화 없음"}</h2><p>{selectedProject?.name ?? "프로젝트 미선택"}</p></div>{!isInspectorOpen && <button type="button" className="secondary" onClick={() => setIsInspectorOpen(true)}>패널 열기</button>}</header><section className="chat-feed">{isLoadingConversations ? <p className="empty-state">대화를 불러오는 중...</p> : feedItems.length > 0 || artifacts.length > 0 ? <>{feedItems.map((feedItem) => { if (feedItem.kind === "message") { const message = feedItem.item; return <article key={`message-${message.id}`} className={message.role === "user" ? "chat-bubble user" : "chat-bubble assistant"}><div className="bubble-label">{message.role === "user" ? "사용자" : "Owner"}</div><pre>{message.content}</pre></article>; } if (feedItem.kind === "step") { const step = feedItem.item; return <article key={`step-${step.id}`} className="event-card step"><strong>Owner 작업</strong><span className={statusClass(step.status)}>{statusLabel(step.status)}</span><p>{step.summary ?? step.step_type}</p></article>; } const tool = feedItem.item; return <article key={`tool-${tool.id}`} className="event-card tool"><strong>Owner가 도구를 사용했습니다</strong><span className={statusClass(tool.status)}>{statusLabel(tool.status)}</span><p>{tool.tool_name}</p></article>; })}{artifacts.length > 0 && <article className="chat-bubble assistant artifact-feed-card"><div className="bubble-label">Artifacts</div><p>현재 Attempt에서 생성된 파일입니다. 클릭하면 오른쪽에서 내용을 확인할 수 있습니다.</p><div className="artifact-chip-list">{artifacts.map((artifact) => <button type="button" key={artifact.id} className={artifact.id === selectedArtifactId ? "artifact-chip active" : "artifact-chip"} onClick={() => void openArtifactPanel(artifact)}><span>{artifact.kind}</span><strong>{artifactName(artifact)}</strong><small>{formatBytes(artifact.size_bytes)}</small></button>)}</div></article>}</> : <div className="chat-empty"><h2>Owner에게 작업을 요청하세요</h2><p>왼쪽에서 프로젝트와 채팅을 고르면 사용자와 Owner의 대화가 여기에 표시됩니다.</p></div>}</section>
+    <main className="codex-chat"><header className="chat-topbar"><div><h2>{selectedConversation?.title ?? "대화 없음"}</h2><p>{selectedProject?.name ?? "프로젝트 미선택"}</p></div>{!isInspectorOpen && <button type="button" className="secondary" onClick={() => setIsInspectorOpen(true)}>패널 열기</button>}</header><OwnerRunStatusBanner run={latestOwnerRun} isSending={isSendingMessage} /><section className="chat-feed">{isLoadingConversations ? <p className="empty-state">대화를 불러오는 중...</p> : feedItems.length > 0 || artifacts.length > 0 ? <>{feedItems.map((feedItem) => { if (feedItem.kind === "message") { const message = feedItem.item; return <article key={`message-${message.id}`} className={message.role === "user" ? "chat-bubble user" : "chat-bubble assistant"}><div className="bubble-label">{message.role === "user" ? "사용자" : "Owner"}</div><pre>{message.content}</pre></article>; } if (feedItem.kind === "step") { const step = feedItem.item; return <article key={`step-${step.id}`} className="event-card step"><strong>Owner 작업</strong><span className={statusClass(step.status)}>{statusLabel(step.status)}</span><p>{step.summary ?? step.step_type}</p></article>; } const tool = feedItem.item; return <article key={`tool-${tool.id}`} className="event-card tool"><strong>Owner가 도구를 사용했습니다</strong><span className={statusClass(tool.status)}>{statusLabel(tool.status)}</span><p>{tool.tool_name}</p></article>; })}{artifacts.length > 0 && <article className="chat-bubble assistant artifact-feed-card"><div className="bubble-label">Artifacts</div><p>현재 Attempt에서 생성된 파일입니다. 클릭하면 오른쪽에서 내용을 확인할 수 있습니다.</p><div className="artifact-chip-list">{artifacts.map((artifact) => <button type="button" key={artifact.id} className={artifact.id === selectedArtifactId ? "artifact-chip active" : "artifact-chip"} onClick={() => void openArtifactPanel(artifact)}><span>{artifact.kind}</span><strong>{artifactName(artifact)}</strong><small>{formatBytes(artifact.size_bytes)}</small></button>)}</div></article>}</> : <div className="chat-empty"><h2>Owner에게 작업을 요청하세요</h2><p>왼쪽에서 프로젝트와 채팅을 고르면 사용자와 Owner의 대화가 여기에 표시됩니다.</p></div>}</section>
       <footer className="composer codex-composer">{pendingAttachmentFiles.length > 0 && <div className="pending-attachment-list">{pendingAttachmentFiles.map((file, index) => <span key={`${file.name}-${index}`} className="pending-attachment-chip">📎 <strong>{file.name}</strong><small>{formatBytes(file.size)}</small><button type="button" aria-label="첨부 제거" onClick={() => removePendingAttachment(index)}>×</button></span>)}</div>}<div className="composer-input-row"><input type="text" value={draftMessage} onChange={(event) => setDraftMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void handleSendMessage(); }} placeholder="후속 변경 사항을 부탁하세요" disabled={isSendingMessage || !selectedConversation} /><button className="composer-send-button" type="button" onClick={handleSendMessage} disabled={(!draftMessage.trim() && pendingAttachmentFiles.length === 0) || isSendingMessage || !selectedConversation}>{isSendingMessage ? "…" : "↑"}</button></div><div className="composer-toolbar"><div className="composer-left-tools"><label className="composer-icon-action" title="파일 첨부">＋<input className="composer-file-input" type="file" multiple onChange={(event) => handleComposerFiles(event.target.files)} /></label><select className="composer-permission-select" value={effectivePermissionMode} onChange={(event) => handleComposerPermissionChange(event.target.value)} title="권한 설정">{(settings?.available_approval_modes ?? [effectivePermissionMode]).map((mode) => <option key={mode} value={mode}>{permissionModeLabel(mode)}</option>)}</select></div><div className="composer-right-tools"><button type="button" className="composer-tool-button" onClick={handleVoiceInputPlaceholder} title="Whisper 음성 입력 예정">🎙</button></div></div></footer>
       {(sendError || actionError) && <div className={sendError ? "dismissible-notice danger" : "dismissible-notice"}><span>{sendError ? `전송 실패: ${sendError}` : actionError}</span><button type="button" aria-label="알림 닫기" onClick={() => { setSendError(null); setActionError(null); }}>×</button></div>}
     </main>

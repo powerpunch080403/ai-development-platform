@@ -199,3 +199,21 @@
 .dismissible-notice button:hover:not(:disabled) {
   background: rgb(24 24 27 / 8%);
 }
+
+
+.owner-run-status-banner {
+  margin: 12px 20px 0;
+  padding: 10px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  background: #f6f8fa;
+  color: #24292f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.owner-run-status-banner.danger {
+  border-color: #f0c6c6;
+  background: #fff5f5;
+  color: #9a3412;
+}
