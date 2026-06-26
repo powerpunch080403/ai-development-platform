@@ -11,6 +11,7 @@ from aidp_server.db.models import (
     Device,
     DeviceType,
     Project,
+    ProjectRepository,
     RecordStatus,
     RiskLevel,
     Task,
@@ -35,6 +36,7 @@ from aidp_server.write_scope import WriteScopeError
 
 ALLOWED_OWNER_TOOLS = {
     "project.list",
+    "repository.list",
     "task.list",
     "task.create",
     "attempt.accept",
@@ -45,7 +47,7 @@ ALLOWED_OWNER_TOOLS = {
     "worker.drain_queue",
     "worker.recover_stale_runs",
 }
-READ_ONLY_OWNER_TOOLS = {"project.list", "task.list"}
+READ_ONLY_OWNER_TOOLS = {"project.list", "repository.list", "task.list"}
 
 
 def apply_authority_envelope(session: Session, tool_call: ToolCall, mode: str = "personal") -> bool:
@@ -515,6 +517,35 @@ def execute_owner_tool(
             .order_by(Project.created_at.desc())
         ).all()
         return {"projects": [{"id": p.id, "name": p.name} for p in projects]}
+
+    if tool_call.tool_name == "repository.list":
+        args = tool_call.arguments_json or {}
+        project_id = args.get("project_id") or tool_call.project_id
+        query = (
+            select(ProjectRepository)
+            .where(ProjectRepository.local_user_id == tool_call.user_id)
+            .where(ProjectRepository.archived_at.is_(None))
+        )
+        if project_id:
+            query = query.where(ProjectRepository.project_id == project_id)
+        repositories = session.scalars(query.order_by(ProjectRepository.created_at.asc())).all()
+        return {
+            "repositories": [
+                {
+                    "id": repository.id,
+                    "project_id": repository.project_id,
+                    "repository_name": repository.repository_name,
+                    "repository_path": repository.repository_path,
+                    "repository_role": repository.repository_role.value,
+                    "vcs_type": repository.vcs_type.value,
+                    "default_branch": repository.default_branch,
+                    "current_branch": repository.current_branch,
+                    "last_commit_sha": repository.last_commit_sha,
+                    "is_dirty": repository.is_dirty,
+                }
+                for repository in repositories
+            ]
+        }
 
     if tool_call.tool_name == "task.list":
         query = select(Task).where(Task.local_user_id == tool_call.user_id)

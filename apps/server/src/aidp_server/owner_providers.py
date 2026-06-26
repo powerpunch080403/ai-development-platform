@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from aidp_server.audit import record_audit_event
 from aidp_server.config import Settings
+from aidp_server.owner.context_builder import build_owner_context, summarize_owner_context
 from aidp_server.db.models import (
     AgentRun,
     AgentRunStatus,
@@ -424,9 +425,12 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
     provider_kind = "fake"
 
     def start_agent_run(self, session: Session, run: AgentRun) -> None:
+        owner_context = build_owner_context(session, run)
+        context_summary = summarize_owner_context(owner_context)
+
         scripted_request = (run.provider_metadata_json or {}).get("scripted_tool_request")
         if isinstance(scripted_request, dict):
-            self._run_scripted_tool_request(session, run, scripted_request)
+            self._run_scripted_tool_request(session, run, scripted_request, context_summary)
             return
 
         self._complete_run(
@@ -440,6 +444,7 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
                 "task_side_effects_performed": False,
                 "worker_side_effects_performed": False,
                 "approval_side_effects_performed": False,
+                "owner_context": context_summary,
             },
         )
 
@@ -448,6 +453,7 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
         session: Session,
         run: AgentRun,
         scripted_request: dict[str, object],
+        context_summary: dict[str, object],
     ) -> None:
         from aidp_server.owner_tool_loop import OwnerToolRequest, request_tool_from_owner_provider
 
@@ -460,7 +466,11 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
                 error_category="provider_configuration_error",
                 error_message="Fake provider scripted_tool_request.tool_name is required.",
                 event_type="owner_runtime.fake_script_invalid",
-                metadata={"fake": True, "tool_loop_executed": False},
+                metadata={
+                    "fake": True,
+                    "tool_loop_executed": False,
+                    "owner_context": context_summary,
+                },
             )
             return
 
@@ -473,7 +483,11 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
                 error_category="provider_configuration_error",
                 error_message="Fake provider scripted_tool_request.arguments_json must be an object.",
                 event_type="owner_runtime.fake_script_invalid",
-                metadata={"fake": True, "tool_loop_executed": False},
+                metadata={
+                    "fake": True,
+                    "tool_loop_executed": False,
+                    "owner_context": context_summary,
+                },
             )
             return
 
@@ -489,7 +503,10 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
                 tool_name=tool_name,
                 arguments_json=raw_arguments,
                 provider_call_id=provider_call_id,
-                metadata={"source": "fake_scripted_provider"},
+                metadata={
+                    "source": "fake_scripted_provider",
+                    "owner_context": context_summary,
+                },
             ),
         )
 
@@ -530,6 +547,7 @@ class FakeOwnerProvider(OwnerRuntimeProvider):
                 "task_side_effects_performed": tool_name == "task.create",
                 "worker_side_effects_performed": False,
                 "approval_side_effects_performed": False,
+                "owner_context": context_summary,
             },
         )
 
