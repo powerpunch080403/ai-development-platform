@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 from datetime import datetime, timezone
 import re
 import shlex
@@ -10,6 +11,11 @@ from sqlalchemy.orm import Session
 from aidp_server.audit import record_audit_event
 from aidp_server.config import Settings
 from aidp_server.owner.context_builder import build_owner_context, summarize_owner_context
+from aidp_server.owner.provider_events import (
+    PROVIDER_EVENT_PROTOCOL_VERSION,
+    OwnerProviderEventParseError,
+    parse_structured_stdout,
+)
 from aidp_server.db.models import (
     AgentRun,
     AgentRunStatus,
@@ -217,6 +223,9 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
         if mode == "bridge_spike":
             self._run_bridge_spike(session, run)
             return
+        if mode == "structured_stdout":
+            self._run_structured_stdout(session, run)
+            return
         if mode == "prompt":
             self._run_prompt(session, run)
             return
@@ -277,6 +286,288 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                 "stdout_excerpt": stdout_val,
                 "stderr_excerpt": stderr_val,
                 "timeout_seconds": 10,
+            },
+        )
+
+    def _structured_prompt(self, session: Session, run: AgentRun) -> tuple[str, dict[str, object]]:
+        owner_context = build_owner_context(session, run)
+        context_summary = summarize_owner_context(owner_context)
+        payload = {
+            "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+            "instructions": [
+                "Respond only with JSONL or a JSON object/array using this protocol.",
+                "Use assistant_message for user-visible text.",
+                "Use tool_request when platform side effects or platform reads are needed.",
+                "Do not mutate files, git, worktrees, database rows, approvals, or workers directly.",
+                "The platform will execute tool_request events through the Owner ToolCall bridge.",
+            ],
+            "event_schemas": {
+                "assistant_message": {
+                    "type": "assistant_message",
+                    "content": "text to show the user",
+                },
+                "tool_request": {
+                    "type": "tool_request",
+                    "tool_name": "task.create",
+                    "arguments_json": {},
+                    "provider_call_id": "optional stable provider id",
+                },
+                "error": {
+                    "type": "error",
+                    "error_code": "provider_reported_error",
+                    "error_message": "provider-visible failure",
+                    "error_category": "provider_reported_error",
+                },
+            },
+            "owner_context": owner_context,
+        }
+        prompt = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return prompt, context_summary
+
+    def _run_structured_stdout(self, session: Session, run: AgentRun) -> None:
+        from aidp_server.owner_tool_loop import OwnerToolRequest, request_tool_from_owner_provider
+
+        prompt, context_summary = self._structured_prompt(session, run)
+        args = shlex.split(self.settings.codex_cli_prompt_args)
+        cmd = [self.settings.codex_cli_command, *args]
+        run.started_at = self._now()
+
+        try:
+            result = subprocess.run(
+                cmd,
+                input=prompt,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=self.settings.codex_cli_timeout_seconds,
+            )
+        except FileNotFoundError:
+            self._mark_failed(
+                session,
+                run,
+                error_code="owner_provider_command_not_found",
+                error_category="provider_runtime_unavailable",
+                error_message=f"Owner provider command not found: {self.settings.codex_cli_command}",
+                event_type="owner_runtime.structured_command_not_found",
+                metadata={
+                    "command": self.settings.codex_cli_command,
+                    "mode": "structured_stdout",
+                    "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                    "owner_context": context_summary,
+                },
+            )
+            return
+        except subprocess.TimeoutExpired:
+            self._mark_failed(
+                session,
+                run,
+                error_code="owner_provider_timeout",
+                error_category="timeout",
+                error_message="Owner provider command timed out.",
+                event_type="owner_runtime.structured_timeout",
+                metadata={
+                    "command": self.settings.codex_cli_command,
+                    "mode": "structured_stdout",
+                    "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                    "timeout_seconds": self.settings.codex_cli_timeout_seconds,
+                    "owner_context": context_summary,
+                },
+            )
+            return
+
+        stdout_val = (result.stdout or "").strip()
+        stderr_val = (result.stderr or "").strip()
+
+        if result.returncode != 0:
+            quota_error = codex_usage_limit_error(stderr_val)
+            if quota_error:
+                self._mark_failed(
+                    session,
+                    run,
+                    error_code=quota_error.error_code,
+                    error_category=quota_error.error_category,
+                    error_message=quota_error.user_message,
+                    retry_after=quota_error.retry_after,
+                    provider_message=quota_error.provider_message,
+                    event_type="owner_runtime.structured_failed",
+                    metadata={
+                        "command": self.settings.codex_cli_command,
+                        "args": args,
+                        "exit_code": result.returncode,
+                        "stdout_excerpt": stdout_val[:500],
+                        "stderr_excerpt": stderr_val[:500],
+                        "mode": "structured_stdout",
+                        "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                        "owner_context": context_summary,
+                        **(quota_error.metadata or {}),
+                    },
+                )
+                return
+
+            error_message = stderr_val[:4000] or f"Owner provider exited with code {result.returncode}."
+            self._mark_failed(
+                session,
+                run,
+                error_code="owner_provider_failed",
+                error_category="provider_error",
+                error_message=error_message,
+                provider_message=stderr_val[:4000] if stderr_val else None,
+                event_type="owner_runtime.structured_failed",
+                metadata={
+                    "command": self.settings.codex_cli_command,
+                    "args": args,
+                    "exit_code": result.returncode,
+                    "stdout_excerpt": stdout_val[:500],
+                    "stderr_excerpt": stderr_val[:500],
+                    "mode": "structured_stdout",
+                    "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                    "owner_context": context_summary,
+                    "usage_limit": False,
+                },
+            )
+            return
+
+        if not stdout_val:
+            self._mark_failed(
+                session,
+                run,
+                error_code="owner_provider_empty_response",
+                error_category="empty_response",
+                error_message="Owner provider completed without producing a structured response.",
+                event_type="owner_runtime.structured_empty_response",
+                metadata={
+                    "command": self.settings.codex_cli_command,
+                    "args": args,
+                    "mode": "structured_stdout",
+                    "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                    "owner_context": context_summary,
+                },
+            )
+            return
+
+        try:
+            events = parse_structured_stdout(stdout_val)
+        except OwnerProviderEventParseError as error:
+            self._mark_failed(
+                session,
+                run,
+                error_code="owner_provider_malformed_tool_output",
+                error_category="malformed_tool_output",
+                error_message="Owner provider produced malformed structured output.",
+                provider_message=str(error),
+                event_type="owner_runtime.structured_malformed_output",
+                metadata={
+                    "command": self.settings.codex_cli_command,
+                    "args": args,
+                    "mode": "structured_stdout",
+                    "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                    "stdout_excerpt": stdout_val[:500],
+                    "stderr_excerpt": stderr_val[:500],
+                    "owner_context": context_summary,
+                },
+            )
+            return
+
+        tool_call_ids: list[str] = []
+        assistant_message_count = 0
+        task_side_effects_performed = False
+
+        for index, event in enumerate(events):
+            if event.event_type == "assistant_message":
+                self._append_assistant_message(session, run, event.content or "")
+                self._record_completed_model_step(
+                    session,
+                    run,
+                    "Owner provider produced a structured assistant message.",
+                )
+                assistant_message_count += 1
+                continue
+
+            if event.event_type == "error":
+                self._mark_failed(
+                    session,
+                    run,
+                    error_code=event.error_code or "owner_provider_reported_error",
+                    error_category=event.error_category or "provider_reported_error",
+                    error_message=event.error_message or "Owner provider reported an error.",
+                    event_type="owner_runtime.structured_provider_error",
+                    metadata={
+                        "mode": "structured_stdout",
+                        "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                        "event_index": index,
+                        "provider_event_metadata": event.metadata,
+                        "owner_context": context_summary,
+                    },
+                )
+                return
+
+            if event.event_type == "tool_request":
+                call = request_tool_from_owner_provider(
+                    session,
+                    run,
+                    provider_kind=self.provider_kind,
+                    request=OwnerToolRequest(
+                        tool_name=event.tool_name or "",
+                        arguments_json=event.arguments_json,
+                        provider_call_id=event.provider_call_id,
+                        metadata={
+                            "source": "codex_structured_stdout",
+                            "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                            "event_index": index,
+                            "provider_event_metadata": event.metadata,
+                        },
+                    ),
+                )
+                tool_call_ids.append(call.id)
+
+                if call.status.value != "succeeded":
+                    self._mark_failed(
+                        session,
+                        run,
+                        error_code=call.error_code or "owner_tool_call_failed",
+                        error_category="tool_call_failed",
+                        error_message=call.error_message or f"Owner tool call failed: {event.tool_name}",
+                        event_type="owner_runtime.structured_tool_failed",
+                        metadata={
+                            "mode": "structured_stdout",
+                            "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                            "event_index": index,
+                            "tool_call_id": call.id,
+                            "tool_name": event.tool_name,
+                            "tool_status": call.status.value,
+                            "owner_context": context_summary,
+                        },
+                    )
+                    return
+
+                if event.tool_name == "task.create":
+                    task_side_effects_performed = True
+                continue
+
+        self._complete_run(
+            session,
+            run,
+            event_type="owner_runtime.structured_completed",
+            message="Owner provider completed structured stdout execution.",
+            metadata={
+                "real_provider_execution": True,
+                "mode": "structured_stdout",
+                "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+                "event_count": len(events),
+                "assistant_message_count": assistant_message_count,
+                "tool_loop_executed": bool(tool_call_ids),
+                "tool_call_ids": tool_call_ids,
+                "task_side_effects_performed": task_side_effects_performed,
+                "worker_side_effects_performed": False,
+                "approval_side_effects_performed": False,
+                "tool_result_delivery": "not_supported_by_structured_stdout_one_shot",
+                "command": self.settings.codex_cli_command,
+                "args": args,
+                "exit_code": result.returncode,
+                "stdout_excerpt": stdout_val[:500],
+                "stderr_excerpt": stderr_val[:500],
+                "owner_context": context_summary,
             },
         )
 
