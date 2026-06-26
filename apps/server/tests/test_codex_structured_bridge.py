@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 import sys
 
 from sqlalchemy import select
@@ -91,6 +93,23 @@ def test_codex_structured_stdout_tool_request_creates_task_through_owner_loop(
         assert run.provider_metadata_json["worker_side_effects_performed"] is False
         assert run.provider_metadata_json["approval_side_effects_performed"] is False
 
+        session_meta = run.provider_metadata_json["owner_provider_session"]
+        session_dir = Path(session_meta["session_dir"])
+        assert session_dir.exists()
+
+        events = [
+            json.loads(line)
+            for line in Path(session_meta["events_jsonl_path"]).read_text(encoding="utf-8").splitlines()
+        ]
+        tool_results = [
+            json.loads(line)
+            for line in Path(session_meta["tool_results_jsonl_path"]).read_text(encoding="utf-8").splitlines()
+        ]
+        assert any(event.get("method") == "owner.tool.request" for event in events)
+        assert any(event.get("method") == "owner.tool.result" for event in events)
+        assert tool_results[0]["result"]["tool_status"] == "succeeded"
+        assert Path(session_meta["final_state_path"]).exists()
+
         task = session.scalar(select(Task).where(Task.project_id == project_id, Task.title == "Structured Task"))
         assert task is not None
         assert task.agent_run_id == run_id
@@ -167,8 +186,19 @@ def test_codex_structured_stdout_maps_command_not_found(app_harness: AppHarness)
         assert run.error_category == "provider_runtime_unavailable"
 
 
-def test_codex_structured_stdout_maps_timeout(app_harness: AppHarness) -> None:
-    _configure_structured_stdout(app_harness, "import time; time.sleep(2)", timeout=0.01)
+def test_codex_structured_stdout_maps_timeout(app_harness: AppHarness, tmp_path: Path) -> None:
+    script_path = tmp_path / "sleep_provider.py"
+    script_path.write_text(
+        "import time\ntime.sleep(5)\n",
+        encoding="utf-8",
+    )
+
+    app_harness.settings.allow_real_codex_owner_provider = True
+    app_harness.settings.codex_cli_mode = "structured_stdout"
+    app_harness.settings.codex_cli_command = sys.executable
+    app_harness.settings.codex_cli_prompt_args = script_path.as_posix()
+    app_harness.settings.codex_cli_timeout_seconds = 0.1
+
     _project_id, _conversation_id, run_id = _create_run(app_harness)
 
     start_resp = app_harness.client.post(f"/agent-runs/{run_id}/start", json={"provider_kind": "codex_cli"})

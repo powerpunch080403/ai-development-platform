@@ -16,6 +16,11 @@ from aidp_server.owner.provider_events import (
     OwnerProviderEventParseError,
     parse_structured_stdout,
 )
+from aidp_server.owner.provider_session import (
+    OWNER_PROVIDER_SESSION_PROTOCOL_VERSION,
+    OwnerProviderSessionArtifacts,
+    OwnerProviderSessionStore,
+)
 from aidp_server.db.models import (
     AgentRun,
     AgentRunStatus,
@@ -289,17 +294,30 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
             },
         )
 
-    def _structured_prompt(self, session: Session, run: AgentRun) -> tuple[str, dict[str, object]]:
+    def _structured_prompt(
+        self,
+        session: Session,
+        run: AgentRun,
+    ) -> tuple[str, dict[str, object], OwnerProviderSessionArtifacts]:
         owner_context = build_owner_context(session, run)
         context_summary = summarize_owner_context(owner_context)
+        session_artifacts = OwnerProviderSessionStore(self.settings).start_session(
+            run,
+            provider_kind=self.provider_kind,
+            owner_context=owner_context,
+            context_summary=context_summary,
+        )
         payload = {
             "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
+            "session_protocol": OWNER_PROVIDER_SESSION_PROTOCOL_VERSION,
+            "session": session_artifacts.as_prompt_context(),
             "instructions": [
                 "Respond only with JSONL or a JSON object/array using this protocol.",
                 "Use assistant_message for user-visible text.",
                 "Use tool_request when platform side effects or platform reads are needed.",
                 "Do not mutate files, git, worktrees, database rows, approvals, or workers directly.",
                 "The platform will execute tool_request events through the Owner ToolCall bridge.",
+                "The platform records provider events and tool results in the Owner provider session log.",
             ],
             "event_schemas": {
                 "assistant_message": {
@@ -322,12 +340,14 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
             "owner_context": owner_context,
         }
         prompt = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-        return prompt, context_summary
+        return prompt, context_summary, session_artifacts
 
     def _run_structured_stdout(self, session: Session, run: AgentRun) -> None:
         from aidp_server.owner_tool_loop import OwnerToolRequest, request_tool_from_owner_provider
 
-        prompt, context_summary = self._structured_prompt(session, run)
+        prompt, context_summary, session_artifacts = self._structured_prompt(session, run)
+        session_store = OwnerProviderSessionStore(self.settings)
+        session_metadata = session_artifacts.as_metadata()
         args = shlex.split(self.settings.codex_cli_prompt_args)
         cmd = [self.settings.codex_cli_command, *args]
         run.started_at = self._now()
@@ -355,6 +375,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     "mode": "structured_stdout",
                     "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
                     "owner_context": context_summary,
+                    "owner_provider_session": session_metadata,
                 },
             )
             return
@@ -372,12 +393,18 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
                     "timeout_seconds": self.settings.codex_cli_timeout_seconds,
                     "owner_context": context_summary,
+                    "owner_provider_session": session_metadata,
                 },
             )
             return
 
         stdout_val = (result.stdout or "").strip()
         stderr_val = (result.stderr or "").strip()
+        session_store.record_raw_output(
+            session_artifacts,
+            stdout=stdout_val,
+            stderr=stderr_val,
+        )
 
         if result.returncode != 0:
             quota_error = codex_usage_limit_error(stderr_val)
@@ -400,6 +427,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                         "mode": "structured_stdout",
                         "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
                         "owner_context": context_summary,
+                    "owner_provider_session": session_metadata,
                         **(quota_error.metadata or {}),
                     },
                 )
@@ -423,6 +451,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     "mode": "structured_stdout",
                     "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
                     "owner_context": context_summary,
+                    "owner_provider_session": session_metadata,
                     "usage_limit": False,
                 },
             )
@@ -442,6 +471,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     "mode": "structured_stdout",
                     "protocol": PROVIDER_EVENT_PROTOCOL_VERSION,
                     "owner_context": context_summary,
+                    "owner_provider_session": session_metadata,
                 },
             )
             return
@@ -465,6 +495,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     "stdout_excerpt": stdout_val[:500],
                     "stderr_excerpt": stderr_val[:500],
                     "owner_context": context_summary,
+                    "owner_provider_session": session_metadata,
                 },
             )
             return
@@ -474,6 +505,11 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
         task_side_effects_performed = False
 
         for index, event in enumerate(events):
+            provider_request_id = session_store.append_provider_event(
+                session_artifacts,
+                event_index=index,
+                provider_event=event,
+            )
             if event.event_type == "assistant_message":
                 self._append_assistant_message(session, run, event.content or "")
                 self._record_completed_model_step(
@@ -498,6 +534,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                         "event_index": index,
                         "provider_event_metadata": event.metadata,
                         "owner_context": context_summary,
+                    "owner_provider_session": session_metadata,
                     },
                 )
                 return
@@ -520,8 +557,27 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     ),
                 )
                 tool_call_ids.append(call.id)
+                session_store.append_tool_result(
+                    session_artifacts,
+                    request_id=provider_request_id,
+                    tool_call_id=call.id,
+                    tool_name=event.tool_name or "",
+                    tool_status=call.status.value,
+                    result_json=call.result_json,
+                    error_code=call.error_code,
+                    error_message=call.error_message,
+                )
 
                 if call.status.value != "succeeded":
+                    session_store.write_final_state(
+                        session_artifacts,
+                        status="failed",
+                        metadata={
+                            "error_code": call.error_code or "owner_tool_call_failed",
+                            "tool_call_id": call.id,
+                            "tool_name": event.tool_name,
+                        },
+                    )
                     self._mark_failed(
                         session,
                         run,
@@ -537,6 +593,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                             "tool_name": event.tool_name,
                             "tool_status": call.status.value,
                             "owner_context": context_summary,
+                    "owner_provider_session": session_metadata,
                         },
                     )
                     return
@@ -545,6 +602,15 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     task_side_effects_performed = True
                 continue
 
+        session_store.write_final_state(
+            session_artifacts,
+            status="completed",
+            metadata={
+                "event_count": len(events),
+                "assistant_message_count": assistant_message_count,
+                "tool_call_ids": tool_call_ids,
+            },
+        )
         self._complete_run(
             session,
             run,
@@ -568,6 +634,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                 "stdout_excerpt": stdout_val[:500],
                 "stderr_excerpt": stderr_val[:500],
                 "owner_context": context_summary,
+                "owner_provider_session": session_metadata,
             },
         )
 
