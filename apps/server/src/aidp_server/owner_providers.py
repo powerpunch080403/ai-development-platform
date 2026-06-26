@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
 import shlex
@@ -23,14 +24,35 @@ SUPPORTED_OWNER_PROVIDER_KINDS = {"codex_cli", "openai_api", "local_ai", "fake"}
 CODEX_USAGE_LIMIT_RESET_RE = re.compile(r"try again at\s+(.+?)(?:\.|\n|$)", re.IGNORECASE)
 
 
-def codex_usage_limit_message(stderr: str) -> str | None:
+@dataclass(frozen=True)
+class OwnerProviderError:
+    error_code: str
+    error_category: str
+    user_message: str
+    provider_message: str | None = None
+    retry_after: str | None = None
+    metadata: dict[str, object] | None = None
+
+
+def codex_usage_limit_error(stderr: str) -> OwnerProviderError | None:
     if "usage limit" not in stderr.lower():
         return None
+
     match = CODEX_USAGE_LIMIT_RESET_RE.search(stderr)
-    if match:
-        reset_at = match.group(1).strip()
-        return f"Codex usage limit reached. Try again at {reset_at}."
-    return "Codex usage limit reached. Try again later."
+    retry_after = match.group(1).strip() if match and match.group(1) else None
+    user_message = (
+        f"Owner provider quota exceeded. Try again at {retry_after}."
+        if retry_after
+        else "Owner provider quota exceeded. Try again later."
+    )
+    return OwnerProviderError(
+        error_code="owner_provider_quota_exceeded",
+        error_category="quota_exceeded",
+        user_message=user_message,
+        provider_message=stderr[:4000],
+        retry_after=retry_after,
+        metadata={"usage_limit": True},
+    )
 
 
 class OwnerRuntimeProvider:
@@ -45,6 +67,9 @@ class OwnerRuntimeProvider:
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
 
+    def _metadata(self, metadata: dict[str, object] | None = None) -> dict[str, object]:
+        return {"provider_kind": self.provider_kind, **(metadata or {})}
+
     def _mark_failed(
         self,
         session: Session,
@@ -53,14 +78,26 @@ class OwnerRuntimeProvider:
         error_code: str,
         error_message: str,
         event_type: str,
+        error_category: str = "provider_error",
+        retry_after: str | None = None,
+        provider_message: str | None = None,
         metadata: dict[str, object] | None = None,
     ) -> None:
         now = self._now()
+        provider_metadata = self._metadata(metadata)
+        if provider_message:
+            provider_metadata["provider_message"] = provider_message
+
+        run.provider_kind = self.provider_kind
         run.status = AgentRunStatus.FAILED
         run.started_at = run.started_at or now
         run.failed_at = now
         run.error_code = error_code
+        run.error_category = error_category
         run.error_message = error_message
+        run.retry_after = retry_after
+        run.provider_metadata_json = provider_metadata
+
         record_audit_event(
             session,
             event_type=event_type,
@@ -69,7 +106,7 @@ class OwnerRuntimeProvider:
             agent_run_id=run.id,
             conversation_id=run.conversation_id,
             project_id=run.project_id,
-            metadata={"provider_kind": self.provider_kind, **(metadata or {})},
+            metadata=provider_metadata,
         )
 
     def _complete_run(
@@ -82,12 +119,19 @@ class OwnerRuntimeProvider:
         metadata: dict[str, object] | None = None,
     ) -> None:
         now = self._now()
+        provider_metadata = self._metadata(metadata)
+
+        run.provider_kind = self.provider_kind
         run.status = AgentRunStatus.COMPLETED
         run.started_at = run.started_at or now
         run.completed_at = now
         run.failed_at = None
         run.error_code = None
+        run.error_category = None
         run.error_message = None
+        run.retry_after = None
+        run.provider_metadata_json = provider_metadata
+
         record_audit_event(
             session,
             event_type=event_type,
@@ -96,7 +140,7 @@ class OwnerRuntimeProvider:
             agent_run_id=run.id,
             conversation_id=run.conversation_id,
             project_id=run.project_id,
-            metadata={"provider_kind": self.provider_kind, **(metadata or {})},
+            metadata=provider_metadata,
         )
 
     def _next_step_index(self, session: Session, run: AgentRun) -> int:
@@ -152,7 +196,8 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                 session,
                 run,
                 error_code="owner_provider_not_connected",
-                error_message="Owner runtime is not connected yet. Codex CLI Owner bridge is disabled by config.",
+                error_category="provider_not_connected",
+                error_message="Owner runtime provider is not connected yet.",
                 event_type="owner_runtime.skeleton_invoked",
                 metadata={
                     "skeleton": True,
@@ -179,7 +224,8 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
             session,
             run,
             error_code="owner_provider_invalid_mode",
-            error_message=f"Unsupported Codex CLI Owner mode: {self.settings.codex_cli_mode}",
+            error_category="provider_configuration_error",
+            error_message=f"Unsupported Owner provider mode: {self.settings.codex_cli_mode}",
             event_type="owner_runtime.invalid_mode",
             metadata={"mode": self.settings.codex_cli_mode},
         )
@@ -215,7 +261,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
             session,
             run,
             event_type="owner_runtime.bridge_spike_invoked",
-            message="Codex CLI owner provider bridge spike invoked.",
+            message="Owner provider bridge spike invoked.",
             metadata={
                 "bridge_spike": True,
                 "real_provider_execution": False,
@@ -254,7 +300,8 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                 session,
                 run,
                 error_code="owner_provider_command_not_found",
-                error_message=f"Owner CLI command not found: {self.settings.codex_cli_command}",
+                error_category="provider_runtime_unavailable",
+                error_message=f"Owner provider command not found: {self.settings.codex_cli_command}",
                 event_type="owner_runtime.command_not_found",
                 metadata={"command": self.settings.codex_cli_command, "mode": "prompt"},
             )
@@ -264,7 +311,8 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                 session,
                 run,
                 error_code="owner_provider_timeout",
-                error_message="Owner CLI command timed out.",
+                error_category="timeout",
+                error_message="Owner provider command timed out.",
                 event_type="owner_runtime.timeout",
                 metadata={"command": self.settings.codex_cli_command, "mode": "prompt"},
             )
@@ -273,14 +321,38 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
         stdout_val = result.stdout.strip()
         stderr_val = result.stderr.strip()
         if result.returncode != 0:
-            usage_limit_message = codex_usage_limit_message(stderr_val)
+            quota_error = codex_usage_limit_error(stderr_val)
+            if quota_error:
+                metadata = {
+                    "command": self.settings.codex_cli_command,
+                    "args": args,
+                    "exit_code": result.returncode,
+                    "stdout_excerpt": stdout_val[:500],
+                    "stderr_excerpt": stderr_val[:500],
+                    "mode": "prompt",
+                    **(quota_error.metadata or {}),
+                }
+                self._mark_failed(
+                    session,
+                    run,
+                    error_code=quota_error.error_code,
+                    error_category=quota_error.error_category,
+                    error_message=quota_error.user_message,
+                    retry_after=quota_error.retry_after,
+                    provider_message=quota_error.provider_message,
+                    event_type="owner_runtime.prompt_failed",
+                    metadata=metadata,
+                )
+                return
+
+            error_message = stderr_val[:4000] or f"Owner provider exited with code {result.returncode}."
             self._mark_failed(
                 session,
                 run,
-                error_code="owner_provider_usage_limit" if usage_limit_message else "owner_provider_failed",
-                error_message=usage_limit_message
-                or stderr_val[:4000]
-                or f"Owner CLI exited with code {result.returncode}.",
+                error_code="owner_provider_failed",
+                error_category="provider_error",
+                error_message=error_message,
+                provider_message=stderr_val[:4000] if stderr_val else None,
                 event_type="owner_runtime.prompt_failed",
                 metadata={
                     "command": self.settings.codex_cli_command,
@@ -289,7 +361,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                     "stdout_excerpt": stdout_val[:500],
                     "stderr_excerpt": stderr_val[:500],
                     "mode": "prompt",
-                    "usage_limit": usage_limit_message is not None,
+                    "usage_limit": False,
                 },
             )
             return
@@ -299,7 +371,8 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                 session,
                 run,
                 error_code="owner_provider_empty_response",
-                error_message="Owner CLI completed without producing a response.",
+                error_category="empty_response",
+                error_message="Owner provider completed without producing a response.",
                 event_type="owner_runtime.empty_response",
                 metadata={"command": self.settings.codex_cli_command, "args": args, "mode": "prompt"},
             )
@@ -311,7 +384,7 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
             session,
             run,
             event_type="owner_runtime.prompt_completed",
-            message="Owner CLI provider completed prompt execution.",
+            message="Owner provider completed prompt execution.",
             metadata={
                 "real_provider_execution": True,
                 "tool_loop_executed": False,
@@ -340,6 +413,7 @@ class NotImplementedOwnerProvider(OwnerRuntimeProvider):
             session,
             run,
             error_code="owner_provider_not_implemented",
+            error_category="provider_not_implemented",
             error_message=f"Owner provider is not implemented yet: {self.provider_kind}",
             event_type="owner_runtime.provider_not_implemented",
             metadata={"real_provider_execution": False},

@@ -88,7 +88,27 @@ export type RegisterRepositoryRequest = {
 
 export type ConversationDto = { id: string; project_id: string | null; title: string; status: string; created_at: string; updated_at: string };
 export type MessageDto = { id: string; conversation_id: string; agent_run_id: string | null; role: string; content: string; content_type: string; created_at: string };
-export type AgentRunDto = { id: string; conversation_id: string | null; project_id: string | null; status: string; purpose: string; input_message_id: string | null; created_at: string; started_at: string | null; completed_at: string | null; failed_at: string | null; cancelled_at: string | null; error_code: string | null; error_message: string | null };
+export type AgentRunDto = {
+  id: string;
+  conversation_id: string | null;
+  project_id: string | null;
+  status: string;
+  purpose: string;
+  input_message_id: string | null;
+  provider_kind: string | null;
+  provider_model: string | null;
+  runtime_version: string | null;
+  provider_metadata_json: Record<string, unknown> | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  cancelled_at: string | null;
+  error_code: string | null;
+  error_category: string | null;
+  error_message: string | null;
+  retry_after: string | null;
+};
 export type AgentRunStepDto = { id: string; agent_run_id: string; step_index: number; step_type: string; status: string; summary: string | null; created_at: string };
 export type ToolRegistryEntryDto = { id: string; tool_name: string; tool_version: string; category: string; description: string; has_side_effect: boolean; default_risk_level: string; idempotency_required: boolean; approval_behavior: string; audit_required: boolean; enabled: boolean };
 export type ToolCallDto = { id: string; tool_name: string; status: string; arguments_json: Record<string, unknown>; result_json: Record<string, unknown> | null; created_at: string };

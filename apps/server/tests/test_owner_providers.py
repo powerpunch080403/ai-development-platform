@@ -36,6 +36,7 @@ def test_start_queued_agent_run_invokes_fake_provider(app_harness: AppHarness) -
         run = session.get(AgentRun, run_id)
         assert run is not None
         assert run.status.value == "completed"
+        assert run.provider_kind == "fake"
         assert run.started_at is not None
         assert run.completed_at is not None
 
@@ -115,7 +116,9 @@ def test_future_provider_kinds_fail_as_not_implemented(app_harness: AppHarness) 
         run = session.get(AgentRun, run_id)
         assert run is not None
         assert run.status.value == "failed"
+        assert run.provider_kind == "local_ai"
         assert run.error_code == "owner_provider_not_implemented"
+        assert run.error_category == "provider_not_implemented"
 
 
 def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
@@ -148,7 +151,9 @@ def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
         assert run.started_at is not None
         assert run.failed_at is not None
         assert run.completed_at is None
+        assert run.provider_kind == "codex_cli"
         assert run.error_code == "owner_provider_not_connected"
+        assert run.error_category == "provider_not_connected"
 
         audit = session.scalar(
             select(AuditEvent).where(
@@ -195,10 +200,12 @@ def test_codex_cli_provider_bridge_spike_safe_invocation(app_harness: AppHarness
         run = session.get(AgentRun, run_id)
         assert run is not None
         assert run.status.value == "completed"
+        assert run.provider_kind == "codex_cli"
         assert run.started_at is not None
         assert run.completed_at is not None
         assert run.failed_at is None
         assert run.error_code is None
+        assert run.error_category is None
 
         audit = session.scalar(
             select(AuditEvent).where(
@@ -302,14 +309,21 @@ def test_codex_cli_prompt_mode_maps_usage_limit_failure(app_harness: AppHarness)
     body = start_resp.json()
     assert body["status"] == "running_model"
     expected_error_message = (
-        "Codex usage limit reached. Try again at Jun 28th, 2026 8:09 PM."
+        "Owner provider quota exceeded. Try again at Jun 28th, 2026 8:09 PM."
     )
 
     with app_harness.session_factory() as session:
         run = session.get(AgentRun, run_id)
         assert run is not None
-        assert run.error_code == "owner_provider_usage_limit"
+        assert run.provider_kind == "codex_cli"
+        assert run.error_code == "owner_provider_quota_exceeded"
+        assert run.error_category == "quota_exceeded"
         assert run.error_message == expected_error_message
+        assert run.retry_after == "Jun 28th, 2026 8:09 PM"
+        assert run.provider_metadata_json is not None
+        assert run.provider_metadata_json["provider_kind"] == "codex_cli"
+        assert run.provider_metadata_json["usage_limit"] is True
+        assert "usage limit" in str(run.provider_metadata_json["provider_message"]).lower()
 
         assistant_message = session.scalar(
             select(Message).where(Message.agent_run_id == run_id, Message.role == "assistant")

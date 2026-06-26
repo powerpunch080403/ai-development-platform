@@ -65,7 +65,9 @@ class StartAgentRunRequest(BaseModel):
 class UpdateAgentRunStatusRequest(BaseModel):
     status: AgentRunStatus
     error_code: str | None = Field(default=None, max_length=100)
+    error_category: str | None = Field(default=None, max_length=100)
     error_message: str | None = Field(default=None, max_length=4000)
+    retry_after: str | None = Field(default=None, max_length=200)
 
 
 class CreateAgentRunStepRequest(BaseModel):
@@ -101,13 +103,19 @@ class AgentRunView(BaseModel):
     status: str
     purpose: str
     input_message_id: str | None
+    provider_kind: str | None
+    provider_model: str | None
+    runtime_version: str | None
+    provider_metadata_json: dict[str, Any] | None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
     failed_at: datetime | None
     cancelled_at: datetime | None
     error_code: str | None
+    error_category: str | None
     error_message: str | None
+    retry_after: str | None
 
 
 class AgentRunStepView(BaseModel):
@@ -164,13 +172,19 @@ def run_view(value: AgentRun) -> AgentRunView:
         status=value.status.value,
         purpose=value.purpose,
         input_message_id=value.input_message_id,
+        provider_kind=value.provider_kind,
+        provider_model=value.provider_model,
+        runtime_version=value.runtime_version,
+        provider_metadata_json=value.provider_metadata_json,
         created_at=value.created_at,
         started_at=value.started_at,
         completed_at=value.completed_at,
         failed_at=value.failed_at,
         cancelled_at=value.cancelled_at,
         error_code=value.error_code,
+        error_category=value.error_category,
         error_message=value.error_message,
+        retry_after=value.retry_after,
     )
 
 
@@ -424,7 +438,9 @@ def update_agent_run_status(
     now = datetime.now(timezone.utc)
     run.status = request.status
     run.error_code = request.error_code
+    run.error_category = request.error_category
     run.error_message = request.error_message
+    run.retry_after = request.retry_after
     if (
         request.status not in {AgentRunStatus.QUEUED, AgentRunStatus.CANCELLED}
         and run.started_at is None
@@ -476,8 +492,16 @@ def run_owner_provider_background(
             run.status = AgentRunStatus.FAILED
             run.started_at = run.started_at or now
             run.failed_at = now
+            run.provider_kind = provider_kind
             run.error_code = "owner_provider_unhandled_exception"
+            run.error_category = "provider_error"
             run.error_message = str(exc)[:4000] or exc.__class__.__name__
+            run.retry_after = None
+            run.provider_metadata_json = {
+                "provider_kind": provider_kind,
+                "exception_class": exc.__class__.__name__,
+                "source": "owner_provider_background",
+            }
             record_audit_event(
                 background_session,
                 event_type="owner_runtime.unhandled_exception",
@@ -523,8 +547,14 @@ def start_agent_run(
     run.completed_at = None
     run.failed_at = None
     run.cancelled_at = None
+    run.provider_kind = provider_kind
+    run.provider_model = None
+    run.runtime_version = None
+    run.provider_metadata_json = {"provider_kind": provider_kind}
     run.error_code = None
+    run.error_category = None
     run.error_message = None
+    run.retry_after = None
 
     record_audit_event(
         session,

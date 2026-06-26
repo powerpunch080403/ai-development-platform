@@ -545,8 +545,14 @@ class AgentRun(TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_kind: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    runtime_version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    provider_metadata_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_after: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
 
 class AgentRunStep(TimestampMixin, Base):
@@ -567,8 +573,14 @@ class AgentRunStep(TimestampMixin, Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_kind: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    runtime_version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    provider_metadata_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_after: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
 
 class ToolRegistryEntry(TimestampMixin, Base):
@@ -636,8 +648,14 @@ class ToolCall(TimestampMixin, Base):
     )
     result_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
     result_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    provider_kind: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    runtime_version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    provider_metadata_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_after: Mapped[str | None] = mapped_column(String(200), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -1050,8 +1068,14 @@ class ProcessRun(TimestampMixin, Base):
     stderr_artifact_id: Mapped[str | None] = mapped_column(ForeignKey("artifact_refs.id"), nullable=True)
     combined_log_artifact_id: Mapped[str | None] = mapped_column(ForeignKey("artifact_refs.id"), nullable=True)
     
+    provider_kind: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    runtime_version: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    provider_metadata_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_after: Mapped[str | None] = mapped_column(String(200), nullable=True)
     
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
