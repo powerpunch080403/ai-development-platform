@@ -174,6 +174,20 @@ def run_view(value: AgentRun) -> AgentRunView:
     )
 
 
+def step_view(value: AgentRunStep) -> AgentRunStepView:
+    return AgentRunStepView(
+        id=value.id,
+        agent_run_id=value.agent_run_id,
+        step_index=value.step_index,
+        step_type=value.step_type.value,
+        status=value.status.value,
+        summary=value.summary,
+        created_at=value.created_at,
+        started_at=value.started_at,
+        completed_at=value.completed_at,
+    )
+
+
 @router.post("/conversations", response_model=ConversationView, status_code=201)
 def create_conversation(
     request: CreateConversationRequest,
@@ -466,6 +480,23 @@ def start_agent_run(
     return run_view(run)
 
 
+@router.get("/agent-runs/{run_id}/steps", response_model=list[AgentRunStepView])
+def list_agent_run_steps(
+    run_id: str,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> list[AgentRunStepView]:
+    run = owned(session, AgentRun, run_id, current.user.id)
+    return [
+        step_view(value)
+        for value in session.scalars(
+            select(AgentRunStep)
+            .where(AgentRunStep.agent_run_id == run.id)
+            .order_by(AgentRunStep.step_index)
+        )
+    ]
+
+
 @router.post("/agent-runs/{run_id}/steps", response_model=AgentRunStepView, status_code=201)
 def create_agent_run_step(
     run_id: str,
@@ -488,7 +519,7 @@ def create_agent_run_step(
         status=request.status,
         summary=request.summary,
         started_at=now if request.status is not RecordStatus.CREATED else None,
-        completed_at=now if request.status is RecordStatus.COMPLETED else None,
+        completed_at=now if request.status is RecordStatus.SUCCEEDED else None,
     )
     session.add(step)
     session.flush()
@@ -503,14 +534,4 @@ def create_agent_run_step(
         metadata={"step_index": next_index, "step_type": request.step_type.value},
     )
     session.commit()
-    return AgentRunStepView(
-        id=step.id,
-        agent_run_id=step.agent_run_id,
-        step_index=step.step_index,
-        step_type=step.step_type.value,
-        status=step.status.value,
-        summary=step.summary,
-        created_at=step.created_at,
-        started_at=step.started_at,
-        completed_at=step.completed_at,
-    )
+    return step_view(step)
