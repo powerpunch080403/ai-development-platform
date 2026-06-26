@@ -193,7 +193,14 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
         codex_available = False
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+            )
             exit_code = result.returncode
             stdout_val = result.stdout[:500]
             stderr_val = result.stderr[:500]
@@ -238,6 +245,8 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
                 input=prompt,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=self.settings.codex_cli_timeout_seconds,
             )
         except FileNotFoundError:
