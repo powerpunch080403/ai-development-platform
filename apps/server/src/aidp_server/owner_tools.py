@@ -25,7 +25,13 @@ from aidp_server.db.models import (
     WorkerRun,
     WorkerStatus,
 )
+from aidp_server.task_creation import (
+    TaskCreationError,
+    TaskCreationRequest,
+    create_task_from_platform_request,
+)
 from aidp_server.tool_registry import seed_tool_registry
+from aidp_server.write_scope import WriteScopeError
 
 ALLOWED_OWNER_TOOLS = {
     "project.list",
@@ -519,18 +525,28 @@ def execute_owner_tool(
 
     if tool_call.tool_name == "task.create":
         args = tool_call.arguments_json or {}
-        task = Task(
-            local_user_id=tool_call.user_id,
-            project_id=tool_call.project_id,
-            agent_run_id=tool_call.agent_run_id,
-            repository_id=args.get("repository_id"),
-            title=args.get("title", "Untitled Task"),
-            instructions=args.get("instructions", ""),
-            status=TaskStatus.DRAFT,
-            risk_level=RiskLevel.R1,
-        )
-        session.add(task)
-        session.flush()
+        try:
+            task = create_task_from_platform_request(
+                session,
+                TaskCreationRequest(
+                    local_user_id=tool_call.user_id,
+                    project_id=tool_call.project_id,
+                    repository_id=args.get("repository_id"),
+                    work_item_id=args.get("work_item_id"),
+                    conversation_id=args.get("conversation_id"),
+                    agent_run_id=tool_call.agent_run_id,
+                    title=args.get("title", "Untitled Task"),
+                    instructions=args.get("instructions", ""),
+                    write_scope=args.get("write_scope"),
+                    risk_level=args.get("risk_level", RiskLevel.R1.value),
+                    requested_worker_kind=args.get("requested_worker_kind"),
+                ),
+            )
+        except WriteScopeError as error:
+            return _fail(tool_call, error.code, str(error))
+        except TaskCreationError as error:
+            return _fail(tool_call, error.code, str(error))
+
         record_audit_event(
             session,
             event_type="task.created",
