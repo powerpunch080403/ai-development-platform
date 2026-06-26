@@ -79,6 +79,8 @@ export type GitRepositoryStatusDto = {
 };
 
 export type CreateProjectRequest = { name: string; description?: string };
+export type UpdateProjectRequest = { name?: string; description?: string | null };
+export type ProjectOpenResult = { status: string; path: string };
 export type RegisterRepositoryRequest = {
   repository_path: string;
   repository_role?: RepositoryRole;

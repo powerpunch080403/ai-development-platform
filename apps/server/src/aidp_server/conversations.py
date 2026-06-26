@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,20 @@ from aidp_server.config import Settings, get_settings
 class CreateConversationRequest(BaseModel):
     project_id: str | None = None
     title: str = Field(default="New Conversation", min_length=1, max_length=300)
+
+
+class UpdateConversationRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("Conversation title cannot be blank")
+        return value
 
 
 class AppendMessageRequest(BaseModel):
@@ -199,6 +213,7 @@ def list_conversations(
         .where(
             Conversation.local_user_id == current.user.id,
             Conversation.status == ConversationStatus.ACTIVE,
+            Conversation.archived_at.is_(None),
         )
         .order_by(Conversation.updated_at.desc())
     )
@@ -210,6 +225,58 @@ def get_conversation(
     conversation_id: str, current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
 ) -> ConversationView:
     return conversation_view(owned(session, Conversation, conversation_id, current.user.id))
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationView)
+def update_conversation(
+    conversation_id: str,
+    request: UpdateConversationRequest,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> ConversationView:
+    conversation = owned(session, Conversation, conversation_id, current.user.id)
+    if conversation.archived_at is not None:
+        raise HTTPException(status_code=400, detail="Conversation is archived")
+    if request.title is not None:
+        conversation.title = request.title.strip()
+    conversation.updated_at = utc_now()
+    record_audit_event(
+        session,
+        event_type="conversation.updated",
+        message="Conversation updated",
+        local_user_id=current.user.id,
+        device_id=current.device.id,
+        session_id=current.runtime_session.id,
+        project_id=conversation.project_id,
+        conversation_id=conversation.id,
+    )
+    session.commit()
+    return conversation_view(conversation)
+
+
+@router.delete("/conversations/{conversation_id}", response_model=ConversationView)
+def archive_conversation(
+    conversation_id: str,
+    current: CurrentAuth,
+    session: Annotated[Session, Depends(get_session)],
+) -> ConversationView:
+    conversation = owned(session, Conversation, conversation_id, current.user.id)
+    now = utc_now()
+    conversation.status = ConversationStatus.ARCHIVED
+    conversation.archived_at = now
+    conversation.updated_at = now
+    record_audit_event(
+        session,
+        event_type="conversation.archived",
+        message="Conversation archived",
+        local_user_id=current.user.id,
+        device_id=current.device.id,
+        session_id=current.runtime_session.id,
+        project_id=conversation.project_id,
+        conversation_id=conversation.id,
+    )
+    session.commit()
+    return conversation_view(conversation)
 
 
 @router.post(
@@ -421,18 +488,21 @@ def create_agent_run_step(
         step_type=request.step_type,
         status=request.status,
         summary=request.summary,
-        started_at=now if request.status is RecordStatus.RUNNING else None,
-        completed_at=now
-        if request.status
-        in {
-            RecordStatus.SUCCEEDED,
-            RecordStatus.FAILED,
-            RecordStatus.CANCELLED,
-            RecordStatus.SKIPPED,
-        }
-        else None,
+        started_at=now if request.status is not RecordStatus.CREATED else None,
+        completed_at=now if request.status is RecordStatus.COMPLETED else None,
     )
     session.add(step)
+    session.flush()
+    record_audit_event(
+        session,
+        event_type="agent_run.step_created",
+        message="Agent run step recorded",
+        local_user_id=current.user.id,
+        agent_run_id=run.id,
+        conversation_id=run.conversation_id,
+        project_id=run.project_id,
+        metadata={"step_index": next_index, "step_type": request.step_type.value},
+    )
     session.commit()
     return AgentRunStepView(
         id=step.id,
@@ -445,29 +515,3 @@ def create_agent_run_step(
         started_at=step.started_at,
         completed_at=step.completed_at,
     )
-
-
-@router.get("/agent-runs/{run_id}/steps", response_model=list[AgentRunStepView])
-def list_agent_run_steps(
-    run_id: str, current: CurrentAuth, session: Annotated[Session, Depends(get_session)]
-) -> list[AgentRunStepView]:
-    owned(session, AgentRun, run_id, current.user.id)
-    values = session.scalars(
-        select(AgentRunStep)
-        .where(AgentRunStep.agent_run_id == run_id)
-        .order_by(AgentRunStep.step_index.asc())
-    )
-    return [
-        AgentRunStepView(
-            id=step.id,
-            agent_run_id=step.agent_run_id,
-            step_index=step.step_index,
-            step_type=step.step_type.value,
-            status=step.status.value,
-            summary=step.summary,
-            created_at=step.created_at,
-            started_at=step.started_at,
-            completed_at=step.completed_at,
-        )
-        for step in values
-    ]

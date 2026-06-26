@@ -1,332 +1,14 @@
 import { type FormEvent, useEffect, useState } from "react";
-import type {
-  AuthState,
-  ProjectDto,
-  ProjectRepositoryDto,
-  RepositoryRole,
-  ConversationDto,
-  MessageDto,
-  AgentRunDto,
-  ToolRegistryEntryDto,
-  WorkItemDto, TaskDto, TaskAttemptDto, TaskWorkspaceDto, WorkerDto,
-  GitWorktreeDto,ArtifactRefDto, WorkerRunDto,
-  AttemptReviewDto,
-} from "@aidp/shared-contracts";
+import type { AuthState } from "@aidp/shared-contracts";
 
-import {
-  createProject,
-  getMe,
-  listProjects,
-  listRepositories,
-  logout,
-  pair,
-  refreshRepositoryStatus,
-  registerRepository,
-  listConversations,
-  createConversation,
-  listMessages,
-  appendMessage,
-  listAgentRuns,
-  createAgentRun,
-  listToolRegistry,
-  listWorkItems, createWorkItem, listTasks, createTask, getTaskWorkspace, listAttempts, createAttempt,
-  listWorkers, registerWorker, heartbeatWorker, revokeWorker, claimAttempt, releaseAttempt,
-  createWorktree,getWorktreeStatus,getWorktreeDiff,commitWorktree,listArtifacts,readArtifact,
-  listMergeReady,getReview,approveReview,rejectReview,prepareSquash,performSquash,listCleanupPending,cleanupWorktree,
-  runMockWorker, startManualWorker, submitManualWorker, listWorkerRuns, externalCliDryRun,
-  antigravityCliStatus, runAntigravityCliExperimental,
-} from "./api/client";
+import { getMe, logout, pair } from "./api/client";
 import { PersonalModeDashboard } from "./components/dashboard/PersonalModeDashboard";
 
 const defaultDeviceName = `Web UI on ${navigator.userAgent.includes("Windows") ? "Windows" : "this device"}`;
 
-function RecordsPanel({ projects, selectedProjectId }: { projects: ProjectDto[]; selectedProjectId: string }) {
-  const [conversations, setConversations] = useState<ConversationDto[]>([]);
-  const [selectedConversationId, setSelectedConversationId] = useState("");
-  const [messages, setMessages] = useState<MessageDto[]>([]);
-  const [runs, setRuns] = useState<AgentRunDto[]>([]);
-  const [tools, setTools] = useState<ToolRegistryEntryDto[]>([]);
-  const [title, setTitle] = useState("");
-  const [conversationProjectId, setConversationProjectId] = useState(selectedProjectId);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    listConversations().then((items) => { setConversations(items); setSelectedConversationId(items[0]?.id ?? ""); }).catch((e: Error) => setError(e.message));
-    listToolRegistry().then(setTools).catch((e: Error) => setError(e.message));
-  }, []);
-
-  useEffect(() => { if (selectedProjectId) setConversationProjectId(selectedProjectId); }, [selectedProjectId]);
-  useEffect(() => {
-    if (!selectedConversationId) { setMessages([]); setRuns([]); return; }
-    listMessages(selectedConversationId).then(setMessages).catch((e: Error) => setError(e.message));
-    listAgentRuns(selectedConversationId).then(setRuns).catch((e: Error) => setError(e.message));
-  }, [selectedConversationId]);
-
-  async function submitConversation(event: FormEvent) {
-    event.preventDefault(); setError("");
-    try {
-      const created = await createConversation({ title: title || undefined, project_id: conversationProjectId || undefined });
-      setConversations((items) => [created, ...items]); setSelectedConversationId(created.id); setTitle("");
-    } catch (e) { setError(e instanceof Error ? e.message : "Conversation creation failed"); }
-  }
-
-  async function submitMessage(event: FormEvent) {
-    event.preventDefault(); if (!selectedConversationId) return;
-    try { const created = await appendMessage(selectedConversationId, { role: "user", content: message }); setMessages((items) => [...items, created]); setMessage(""); }
-    catch (e) { setError(e instanceof Error ? e.message : "Message append failed"); }
-  }
-
-  async function submitRun() {
-    if (!selectedConversationId) return;
-    const conversation = conversations.find((item) => item.id === selectedConversationId);
-    try {
-      const created = await createAgentRun({ conversation_id: selectedConversationId, project_id: conversation?.project_id ?? undefined, purpose: "owner_request", input_message_id: messages.at(-1)?.id });
-      setRuns((items) => [created, ...items]);
-    } catch (e) { setError(e instanceof Error ? e.message : "Agent run creation failed"); }
-  }
-
-  return <section className="records-grid">
-    <section className="panel">
-      <h2>Conversations</h2>
-      <form className="nested-form" onSubmit={submitConversation}>
-        <label>Title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New Conversation" /></label>
-        <label>Project<select value={conversationProjectId} onChange={(e) => setConversationProjectId(e.target.value)}><option value="">General conversation</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <button type="submit">Create conversation</button>
-      </form>
-      {conversations.length > 0 && <label>Selected conversation<select value={selectedConversationId} onChange={(e) => setSelectedConversationId(e.target.value)}>{conversations.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</select></label>}
-      {selectedConversationId && <>
-        <div className="message-list">{messages.map((item) => <p key={item.id}><strong>{item.role}</strong> {item.content}</p>)}</div>
-        <form className="nested-form" onSubmit={submitMessage}><label>User message<textarea value={message} onChange={(e) => setMessage(e.target.value)} required /></label><button type="submit">Append message</button></form>
-        <button type="button" className="secondary" onClick={submitRun}>Create Agent Run record</button>
-        <div>{runs.map((run) => <p key={run.id}><code>{run.id.slice(0, 8)}</code> · {run.status} · {run.purpose}</p>)}</div>
-      </>}
-    </section>
-    <section className="panel"><h2>Tool Registry</h2><p className="muted">Record contracts only; no tools execute in this slice.</p>{tools.map((tool) => <div className="tool-row" key={tool.id}><code>{tool.tool_name}</code><span>{tool.enabled ? "enabled" : "disabled"} · {tool.default_risk_level}</span></div>)}</section>
-    {error && <p className="error" role="alert">{error}</p>}
-  </section>;
-}
-
-function WorkPanel({ projectId, repositories }: { projectId: string; repositories: ProjectRepositoryDto[] }) {
-  const [items,setItems]=useState<WorkItemDto[]>([]); const [tasks,setTasks]=useState<TaskDto[]>([]);
-  const [attempts,setAttempts]=useState<TaskAttemptDto[]>([]); const [workers,setWorkers]=useState<WorkerDto[]>([]);
-  const [selectedTask,setSelectedTask]=useState(""); const [selectedWorker,setSelectedWorker]=useState("");
-  const [workTitle,setWorkTitle]=useState(""); const [taskTitle,setTaskTitle]=useState(""); const [instructions,setInstructions]=useState(""); const [writeScope,setWriteScope]=useState(".");
-  const [workItemId,setWorkItemId]=useState(""); const [repositoryId,setRepositoryId]=useState(""); const [workerName,setWorkerName]=useState(""); const [error,setError]=useState("");
-  const [worktrees,setWorktrees]=useState<Record<string,GitWorktreeDto>>({});const [diff,setDiff]=useState("");const [artifacts,setArtifacts]=useState<ArtifactRefDto[]>([]);const [artifactText,setArtifactText]=useState("");
-  const [workerRuns,setWorkerRuns]=useState<Record<string,WorkerRunDto>>({});
-  const [taskWorkspace,setTaskWorkspace]=useState<TaskWorkspaceDto|null>(null);
-  const [agStatus, setAgStatus]=useState<{status:string,error_message?:string}>({status:"disabled"});
-  useEffect(()=>{antigravityCliStatus().then(setAgStatus).catch(()=>{})},[]);
-  useEffect(()=>{if(!projectId){setItems([]);setTasks([]);return} listWorkItems(projectId).then(setItems);listTasks(projectId).then(v=>{setTasks(v);setSelectedTask(v[0]?.id??"")});listWorkers().then(v=>{setWorkers(v);setSelectedWorker(v[0]?.id??"")})},[projectId]);
-  useEffect(()=>{
-    if(selectedTask) {
-      getTaskWorkspace(selectedTask).then(setTaskWorkspace).catch((e: Error) => setError(e.message));
-      listAttempts(selectedTask).then(async (atts) => {
-        setAttempts(atts);
-        const runsData: Record<string, WorkerRunDto> = {};
-        for(const a of atts) {
-          const runs = await listWorkerRuns(a.id);
-          const active = runs.find(r => r.adapter_kind === "manual" && r.status === "running");
-          if(active) runsData[a.id] = active;
-        }
-        setWorkerRuns(runsData);
-      });
-    } else {
-      setAttempts([]);
-      setWorkerRuns({});
-      setTaskWorkspace(null);
-    }
-  },[selectedTask]);
-  async function addWork(e:FormEvent){e.preventDefault();try{const v=await createWorkItem(projectId,{title:workTitle,work_item_type:"feature"});setItems(x=>[...x,v]);setWorkTitle("")}catch(x){setError(x instanceof Error?x.message:"Work item failed")}}
-  async function addTask(e:FormEvent){e.preventDefault();try{const paths=writeScope.split(",").map(v=>v.trim()).filter(Boolean);const v=await createTask(projectId,{title:taskTitle,instructions,write_scope:{mode:"paths",paths,allow_new_files:true},repository_id:repositoryId||undefined,work_item_id:workItemId||undefined,risk_level:"R1",requested_worker_kind:"manual"});setTasks(x=>[v,...x]);setSelectedTask(v.id);setTaskTitle("");setInstructions("");setWriteScope(".")}catch(x){setError(x instanceof Error?x.message:"Task failed")}}
-  async function addWorker(e:FormEvent){e.preventDefault();const isMock=workerName.toLowerCase().includes("mock");const isCli=workerName.toLowerCase().includes("cli") || workerName.toLowerCase().includes("dry");const kind = isMock ? "mock" : isCli ? "external_cli" : "manual";const v=await registerWorker({display_name:workerName,worker_kind:kind,capabilities:{manual:kind==="manual",dry_run:kind==="external_cli"}});setWorkers(x=>[...x,v]);setSelectedWorker(v.id);setWorkerName("")}
-  async function doRunMock(a:TaskAttemptDto){try{await runMockWorker(a.id,{});setArtifacts(await listArtifacts(a.id));listAttempts(selectedTask).then(setAttempts)}catch(x){setError(x instanceof Error?x.message:"Mock run failed")}}
-  async function doExternalCliDryRun(a:TaskAttemptDto){try{if(!selectedWorker)return;const v=await externalCliDryRun(a.id,selectedWorker);setWorkerRuns(x=>({...x,[a.id]:{id:v.worker_run_id,local_user_id:"",project_id:"",repository_id:null,task_id:"",task_attempt_id:a.id,worker_id:selectedWorker,adapter_kind:"external_cli_dry_run",status:v.status,last_heartbeat_at:null,lease_expires_at:null,heartbeat_source:null,started_at:null,completed_at:null,failed_at:null,cancelled_at:null,summary:null,error_code:null,error_message:null,updated_at:""}}));setArtifacts(await listArtifacts(a.id));listAttempts(selectedTask).then(setAttempts)}catch(x){setError(x instanceof Error?x.message:"External CLI dry-run failed")}}
-  async function addAttempt(){if(!selectedTask)return;const v=await createAttempt(selectedTask);setAttempts(x=>[...x,v])}
-  async function workerAction(kind:"heartbeat"|"revoke"){if(!selectedWorker)return;const v=kind==="heartbeat"?await heartbeatWorker(selectedWorker):await revokeWorker(selectedWorker);setWorkers(x=>x.map(w=>w.id===v.id?v:w))}
-  async function lease(a:TaskAttemptDto,release=false){if(!selectedWorker)return;try{const v=release?await releaseAttempt(selectedWorker,a.id):await claimAttempt(selectedWorker,a.id);setAttempts(x=>x.map(i=>i.id===v.id?v:i));setWorkers(await listWorkers())}catch(x){setError(x instanceof Error?x.message:"Lease operation failed")}}
-  async function makeWorktree(a:TaskAttemptDto){try{const v=await createWorktree(a.id);setWorktrees(x=>({...x,[a.id]:v}))}catch(x){setError(x instanceof Error?x.message:"Worktree failed")}}
-  async function wtAction(a:TaskAttemptDto,kind:"status"|"diff"|"commit"){const w=worktrees[a.id];if(!w)return;try{if(kind==="status"){const s=await getWorktreeStatus(w.id);setWorktrees(x=>({...x,[a.id]:{...w,status:s.status}}))}else if(kind==="diff"){setDiff((await getWorktreeDiff(w.id)).diff)}else{const v=await commitWorktree(w.id,"chore: apply manual worker result");setWorktrees(x=>({...x,[a.id]:v}));setArtifacts(await listArtifacts(a.id))}}catch(x){setError(x instanceof Error?x.message:"Worktree action failed")}}
-  async function doStartManual(a:TaskAttemptDto){try{const v=await startManualWorker(a.id,{notes:"Started via Web UI"});setWorkerRuns(x=>({...x,[a.id]:v.worker_run}));setWorktrees(x=>({...x,[a.id]:v.worktree}))}catch(x){setError(x instanceof Error?x.message:"Start manual failed")}}
-  async function doSubmitManual(a:TaskAttemptDto){try{const v=await submitManualWorker(a.id,{commit_message:"docs: manual UI edit",result_summary:"Submitted via Web UI"});setWorkerRuns(x=>({...x,[a.id]:v.worker_run}));setArtifacts(await listArtifacts(a.id));listAttempts(selectedTask).then(setAttempts)}catch(x){setError(x instanceof Error?x.message:"Submit manual failed")}}
-  async function doRunAntigravity(a:TaskAttemptDto){try{if(!selectedWorker)return;const v=await runAntigravityCliExperimental(a.id,selectedWorker);setWorkerRuns(x=>({...x,[a.id]:{id:v.worker_run_id,local_user_id:"",project_id:"",repository_id:null,task_id:"",task_attempt_id:a.id,worker_id:selectedWorker,adapter_kind:"antigravity_cli",status:v.status,last_heartbeat_at:null,lease_expires_at:null,heartbeat_source:null,started_at:null,completed_at:null,failed_at:null,cancelled_at:null,summary:null,error_code:null,error_message:null,updated_at:""}}));setArtifacts(await listArtifacts(a.id));listAttempts(selectedTask).then(setAttempts)}catch(x){setError(x instanceof Error?x.message:"Antigravity CLI failed")}}
-  async function refreshTaskWorkspace(){if(!selectedTask)return;try{setTaskWorkspace(await getTaskWorkspace(selectedTask))}catch(x){setError(x instanceof Error?x.message:"Workspace refresh failed")}}
-  function isAttemptBusy(status:string){return ["preparing_worktree","running_worker","waiting_for_commit","retry_requested","committed","reviewing","accepted","merge_ready","merged"].includes(status)}
-  function isAttemptTerminal(status:string){return ["failed","worker_failed","cancelled","rejected","merged"].includes(status)}
-  async function showArtifact(id:string){setArtifactText((await readArtifact(id)).text)}
-  if(!projectId)return null;
-  return <section className="panel"><h2>Work / Tasks / Workers</h2><p className="muted">This MVP does not run real AI workers yet. Use Mock Worker or Manual Worker to validate the local execution pipeline. Process Runner baseline exists for future CLI adapters.</p>
-    <div className="records-grid"><div><form className="nested-form" onSubmit={addWork}><label>Work item title<input value={workTitle} onChange={e=>setWorkTitle(e.target.value)} required/></label><button>Create work item</button></form>{items.map(i=><p key={i.id}><span className="badge">{i.status}</span> {i.title}</p>)}</div>
-    <div><form className="nested-form" onSubmit={addWorker}><label>Worker name<input value={workerName} onChange={e=>setWorkerName(e.target.value)} required/></label><button>Register worker</button></form><select value={selectedWorker} onChange={e=>setSelectedWorker(e.target.value)}>{workers.map(w=><option key={w.id} value={w.id}>{w.display_name} · {w.status}</option>)}</select><div className="button-row"><button type="button" className="secondary" onClick={()=>workerAction("heartbeat")}>Heartbeat</button><button type="button" className="secondary" onClick={()=>workerAction("revoke")}>Revoke</button></div></div></div>
-    <form className="nested-form" onSubmit={addTask}><label>Task title<input value={taskTitle} onChange={e=>setTaskTitle(e.target.value)} required/></label><label>Instructions<textarea value={instructions} onChange={e=>setInstructions(e.target.value)} required/></label><label>Allowed write scope (comma-separated; . means entire repository)<input value={writeScope} onChange={e=>setWriteScope(e.target.value)} required/></label><label>Repository<select value={repositoryId} onChange={e=>setRepositoryId(e.target.value)}><option value="">None</option>{repositories.map(r=><option key={r.id} value={r.id}>{r.repository_name}</option>)}</select></label><label>Work item<select value={workItemId} onChange={e=>setWorkItemId(e.target.value)}><option value="">None</option>{items.map(i=><option key={i.id} value={i.id}>{i.title}</option>)}</select></label><button>Create draft task</button></form>
-    {selectedTask&&<p className="muted">Allowed write scope: {tasks.find(t=>t.id===selectedTask)?.write_scope.paths.join(", ")??"."}</p>}
-    {selectedTask&&taskWorkspace?.operations_summary&&<article className="repository-card"><h3>Task operations</h3><div className="records-grid"><p><strong>Attempts</strong><br/>active {taskWorkspace.operations_summary.active_attempt_count}</p><p><strong>Worker runs</strong><br/>active {taskWorkspace.operations_summary.active_worker_run_count} · stale {taskWorkspace.operations_summary.stale_worker_run_count}</p></div>{taskWorkspace.operations_summary.stale_worker_run_count>0&&<p className="dirty">WorkerRun lease expired. Check the Worker before creating follow-up work.</p>}{taskWorkspace.operations_summary.attention_count>0&&<p className="dirty">Attention required: {taskWorkspace.operations_summary.attention_count}</p>}{taskWorkspace.operations_summary.attention_count===0&&<p className="clean">No operational attention required.</p>}<p>Follow-up: {taskWorkspace.operations_summary.follow_up_available?"available":"blocked"}{taskWorkspace.operations_summary.follow_up_blocked_by_attempt_id?` by #${taskWorkspace.operations_summary.follow_up_blocked_by_attempt_id.slice(0,8)} (${taskWorkspace.operations_summary.follow_up_blocked_by_status})`:""}</p><p>Latest WorkerRun: {taskWorkspace.operations_summary.latest_worker_run_status??"none"}{taskWorkspace.operations_summary.latest_worker_run_lease_expired?" · lease expired":""}</p><button type="button" className="secondary" onClick={refreshTaskWorkspace}>Refresh task operations</button></article>}
-    {tasks.length>0&&<><label>Selected task<select value={selectedTask} onChange={e=>setSelectedTask(e.target.value)}>{tasks.map(t=><option key={t.id} value={t.id}>{t.title} · {t.status}</option>)}</select></label><button type="button" onClick={addAttempt}>Create attempt</button>{attempts.map(a=>{const bundle=taskWorkspace?.attempts.find(item=>item.attempt.id===a.id);const workspaceRun=bundle?.worker_runs.at(-1);const w=worktrees[a.id]??bundle?.worktree??undefined;const wr=workerRuns[a.id];const effectiveRun=wr??workspaceRun;const w_k=workers.find(wk=>wk.id===a.claimed_by_worker_id)?.worker_kind;const canClaim=!a.claimed_by_worker_id&&!isAttemptBusy(a.status)&&!isAttemptTerminal(a.status);const canRelease=Boolean(a.claimed_by_worker_id)&&!isAttemptTerminal(a.status);const canStartManual=Boolean(a.claimed_by_worker_id)&&w_k==="manual"&&!effectiveRun&&!isAttemptTerminal(a.status);const canSubmitManual=effectiveRun?.status==="running"&&!workspaceRun?.lease_expired;return <article className="repository-card" key={a.id}><div>Attempt #{a.attempt_number} · <span className="badge">{a.status}</span></div><div>Lease: {a.lease_expires_at??"none"}</div>{effectiveRun&&<div className={workspaceRun?.lease_expired?"dirty":"muted"}>WorkerRun: {effectiveRun.status} · {effectiveRun.adapter_kind}{workspaceRun?.lease_expired?" · lease expired":""}</div>}<div className="button-row"><button type="button" disabled={!canClaim} title={canClaim?"Claim this attempt":"Attempt is already active, terminal, or claimed"} onClick={()=>lease(a)}>Claim</button><button type="button" className="secondary" disabled={!canRelease} title={canRelease?"Release this attempt":"Nothing claimable to release"} onClick={()=>lease(a,true)}>Release</button>{a.claimed_by_worker_id&&!w&&<button type="button" onClick={()=>makeWorktree(a)}>Create Worktree (Raw)</button>}{a.claimed_by_worker_id&&w_k==="mock"&&<button type="button" onClick={()=>doRunMock(a)}>Run Mock Worker</button>}{a.claimed_by_worker_id&&w_k==="manual"&&!effectiveRun&&<button type="button" disabled={!canStartManual} title={canStartManual?"Start manual work":"Manual work cannot be started for this Attempt state"} onClick={()=>doStartManual(a)}>Start Manual Worker</button>}{a.claimed_by_worker_id&&w_k==="external_cli"&&w&&!wr&&<button type="button" onClick={()=>doExternalCliDryRun(a)}>External CLI Dry Run</button>}{a.claimed_by_worker_id&&w_k==="external_cli"&&w&&!wr&&<button type="button" disabled={agStatus.status!=="available"} onClick={()=>doRunAntigravity(a)}>Run Antigravity CLI Experimental</button>}{effectiveRun&&effectiveRun.status==="running"&&<button type="button" disabled={!canSubmitManual} title={canSubmitManual?"Submit manual result":"WorkerRun lease is expired; refresh or recover before submitting"} onClick={()=>doSubmitManual(a)}>Submit Manual Result</button>}</div>{w&&<><code>{w.worktree_path}</code><div>Branch: {w.branch_name}</div><div>Base: {w.base_commit_sha?.slice(0,8)} · Result: {w.result_commit_sha?.slice(0,8)??"none"}</div>{effectiveRun&&effectiveRun.status==="running"&&!workspaceRun?.lease_expired&&<div style={{color:"#0969da"}}>You can now edit files manually in the worktree. Click "Submit Manual Result" when done.</div>}{workspaceRun?.lease_expired&&<div style={{color:"#fbbf24"}}>This WorkerRun lease is expired. Refresh task operations and recover stale runs before submitting.</div>}{wr&&wr.adapter_kind==="external_cli_dry_run"&&<div style={{color:"#d4a017"}}>This does not run Codex or Antigravity yet.</div>}{a.claimed_by_worker_id&&w_k==="external_cli"&&w&&!wr&&agStatus.status!=="available"&&<div style={{color:"#d4a017"}}>This requires local experimental configuration and does not run by default. ({agStatus.status}: {agStatus.error_message??""})</div>}<div className="button-row"><button type="button" onClick={()=>wtAction(a,"status")}>Refresh status</button><button type="button" onClick={()=>wtAction(a,"diff")}>View diff</button><button type="button" className="secondary" onClick={()=>wtAction(a,"commit")}>Commit result (Raw)</button></div></>}</article>})}</>}
-    {diff&&<pre className="diff-view">{diff}</pre>}{artifacts.map(v=><button key={v.id} type="button" className="secondary" onClick={()=>showArtifact(v.id)}>{v.kind}</button>)}{artifactText&&<pre className="diff-view">{artifactText}</pre>}
-    {error&&<p className="error">{error}</p>}
-  </section>
-}
-
-function ReviewPanel(){const[ready,setReady]=useState<AttemptReviewDto[]>([]);const[selected,setSelected]=useState<AttemptReviewDto|null>(null);const[summary,setSummary]=useState("");const[message,setMessage]=useState("");const[notice,setNotice]=useState("");const refresh=()=>listMergeReady().then(setReady).catch((e:Error)=>setNotice(e.message));useEffect(()=>{void refresh()},[]);async function choose(id:string){setSelected(await getReview(id))}async function action(kind:"approve"|"reject"|"prepare"|"merge"){if(!selected)return;try{if(kind==="approve")setSelected(await approveReview(selected.task_attempt_id,summary));else if(kind==="reject")setSelected(await rejectReview(selected.task_attempt_id,summary));else if(kind==="prepare"){const p=await prepareSquash(selected.task_attempt_id);setNotice(`Merge ready: ${p.merge_possible} (Policy: ${p.policy_decision}, Approval: ${p.approval_status})`)}else setSelected(await performSquash(selected.task_attempt_id,message));void refresh()}catch(e){setNotice(e instanceof Error?e.message:"Review action failed")}}return <section className="panel"><h2>Owner Review / Squash Merge</h2><button type="button" className="secondary" onClick={refresh}>Refresh review ready</button><div>{ready.map(v=><button type="button" className="secondary" key={v.task_attempt_id} onClick={()=>choose(v.task_attempt_id)}>{v.task_title} · {v.repository_name}</button>)}</div>{selected&&<><dl><div><dt>Branches</dt><dd>{selected.base_branch} ← {selected.result_branch}</dd></div><div><dt>Commits</dt><dd>{selected.base_commit_sha.slice(0,8)} → {selected.result_commit_sha.slice(0,8)}</dd></div><div><dt>Checks</dt><dd>clean {String(selected.source_clean)} · base matches {String(selected.base_head_matches)} · review {selected.review_status}</dd></div><div><dt>Policy / Approval</dt><dd>status {selected.approval_status} {selected.approval_request_id ? `(${selected.approval_request_id.slice(0,8)})` : ""}</dd></div><div><dt>Merged</dt><dd>{selected.merge_commit_sha?.slice(0,8)??"not merged"}</dd></div></dl><pre className="diff-view">{selected.diff}</pre><label>Review summary<input value={summary} onChange={e=>setSummary(e.target.value)}/></label><label>Squash commit message<input value={message} onChange={e=>setMessage(e.target.value)}/></label><div className="button-row"><button type="button" onClick={()=>action("approve")}>Approve</button><button type="button" className="secondary" onClick={()=>action("reject")}>Reject</button><button type="button" onClick={()=>action("prepare")}>Prepare merge</button><button type="button" onClick={()=>action("merge")} disabled={selected.approval_status !== "approved"}>Squash merge</button></div></>}{notice&&<p className="status">{notice}</p>}</section>}
-
-function CleanupPanel(){const[items,setItems]=useState<GitWorktreeDto[]>([]);const[error,setError]=useState("");const refresh=()=>listCleanupPending().then(setItems).catch((e:Error)=>setError(e.message));useEffect(()=>{void refresh()},[]);async function cleanup(id:string){try{await cleanupWorktree(id);void refresh()}catch(e){setError(e instanceof Error?e.message:"Cleanup failed")}}return <section className="panel"><h2>Worktree Cleanup</h2><p className="muted">Safe cleanup removes only app-managed worktrees. Source repositories and artifacts remain.</p><button type="button" className="secondary" onClick={refresh}>Refresh cleanup pending</button>{items.map(item=><article className="repository-card" key={item.id}><code>{item.worktree_path}</code><div>{item.branch_name} · {item.status}</div><button type="button" onClick={()=>cleanup(item.id)}>Cleanup Worktree</button></article>)}{error&&<p className="error">{error}</p>}</section>}
-
-function Workspace({ auth, onLogout }: { auth: AuthState; onLogout: () => Promise<void> }) {
-  const [projects, setProjects] = useState<ProjectDto[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [repositories, setRepositories] = useState<ProjectRepositoryDto[]>([]);
-  const [projectName, setProjectName] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
-  const [repositoryPath, setRepositoryPath] = useState("");
-  const [repositoryRole, setRepositoryRole] = useState<RepositoryRole | "">("");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    listProjects()
-      .then((items) => {
-        setProjects(items);
-        setSelectedProjectId(items[0]?.id ?? "");
-      })
-      .catch((reason: Error) => setError(reason.message));
-  }, []);
-
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setRepositories([]);
-      return;
-    }
-    listRepositories(selectedProjectId)
-      .then(setRepositories)
-      .catch((reason: Error) => setError(reason.message));
-  }, [selectedProjectId]);
-
-  async function submitProject(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    try {
-      const created = await createProject({
-        name: projectName,
-        description: projectDescription || undefined,
-      });
-      setProjects((items) => [created, ...items]);
-      setSelectedProjectId(created.id);
-      setProjectName("");
-      setProjectDescription("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Project creation failed");
-    }
-  }
-
-  async function submitRepository(event: FormEvent) {
-    event.preventDefault();
-    if (!selectedProjectId) return;
-    setError("");
-    try {
-      const created = await registerRepository(selectedProjectId, {
-        repository_path: repositoryPath,
-        repository_role: repositoryRole || undefined,
-      });
-      setRepositories((items) => [...items, created]);
-      setRepositoryPath("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Repository registration failed");
-    }
-  }
-
-  async function refresh(repository: ProjectRepositoryDto) {
-    setError("");
-    try {
-      const refreshed = await refreshRepositoryStatus(repository.id);
-      if (refreshed.error_code) throw new Error(refreshed.error_message ?? refreshed.error_code);
-      setRepositories((items) =>
-        items.map((item) =>
-          item.id === repository.id
-            ? {
-                ...item,
-                repository_path: refreshed.repository_root ?? item.repository_path,
-                current_branch: refreshed.current_branch,
-                default_branch: refreshed.default_branch,
-                last_commit_sha: refreshed.last_commit_sha,
-                is_dirty: refreshed.is_dirty ?? item.is_dirty,
-                last_status_checked_at: refreshed.checked_at,
-              }
-            : item,
-        ),
-      );
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Status refresh failed");
-    }
-  }
-
-  return (
-    <section className="workspace">
-      <div className="session-bar">
-        <span>{auth.user.display_name} · {auth.device.display_name}</span>
-        <button type="button" className="secondary" onClick={onLogout}>Log out</button>
-      </div>
-
-      <form className="panel" onSubmit={submitProject}>
-        <h2>Create project</h2>
-        <label>Project name<input value={projectName} onChange={(e) => setProjectName(e.target.value)} required /></label>
-        <label>Description<input value={projectDescription} onChange={(e) => setProjectDescription(e.target.value)} /></label>
-        <button type="submit">Create project</button>
-      </form>
-
-      {projects.length > 0 && (
-        <section className="panel">
-          <label>
-            Selected project
-            <select value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)}>
-              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
-          </label>
-          <form className="nested-form" onSubmit={submitRepository}>
-            <h2>Register Git repository</h2>
-            <label>Repository path<input value={repositoryPath} onChange={(e) => setRepositoryPath(e.target.value)} required /></label>
-            <label>
-              Repository role
-              <select value={repositoryRole} onChange={(e) => setRepositoryRole(e.target.value as RepositoryRole | "")}>
-                <option value="">Automatic (first is primary)</option>
-                {(["primary", "supporting", "docs", "infra", "unknown"] as const).map((role) => <option key={role} value={role}>{role}</option>)}
-              </select>
-            </label>
-            <button type="submit">Register repository</button>
-          </form>
-        </section>
-      )}
-
-      {repositories.length > 0 && (
-        <section className="repository-list">
-          <h2>Repositories</h2>
-          {repositories.map((repository) => (
-            <article className="repository-card" key={repository.id}>
-              <div><strong>{repository.repository_name}</strong> <span className="badge">{repository.repository_role}</span></div>
-              <code>{repository.repository_path}</code>
-              <dl>
-                <div><dt>Current</dt><dd>{repository.current_branch ?? "detached"}</dd></div>
-                <div><dt>Default</dt><dd>{repository.default_branch ?? "unknown"}</dd></div>
-                <div><dt>Commit</dt><dd>{repository.last_commit_sha?.slice(0, 8) ?? "none"}</dd></div>
-                <div><dt>Status</dt><dd className={repository.is_dirty ? "dirty" : "clean"}>{repository.is_dirty ? "Dirty" : "Clean"}</dd></div>
-              </dl>
-              <button type="button" className="secondary" onClick={() => refresh(repository)}>Refresh status</button>
-            </article>
-          ))}
-        </section>
-      )}
-      <RecordsPanel projects={projects} selectedProjectId={selectedProjectId} />
-      <WorkPanel projectId={selectedProjectId} repositories={repositories} />
-      <ReviewPanel />
-      <CleanupPanel />
-      {error && <p className="error" role="alert">{error}</p>}
-    </section>
-  );
-}
-
 export function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewState, setViewState] = useState<"legacy" | "dashboard">("dashboard");
   const [code, setCode] = useState("");
   const [deviceName, setDeviceName] = useState(defaultDeviceName);
   const [error, setError] = useState("");
@@ -353,27 +35,26 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <header>
-        <p className="eyebrow">Personal Mode MVP</p>
-        <h1>AI Development Platform</h1>
-      </header>
-      {loading ? <p className="status">Checking Local Runtime session…</p> : auth ? (
+      {loading ? (
+        <p className="status">Checking Local Runtime session…</p>
+      ) : auth ? (
         <>
-          <div className="view-toggle">
-            <button onClick={() => setViewState("dashboard")} className={viewState === "dashboard" ? "" : "secondary"}>Dashboard View</button>
-            <button onClick={() => setViewState("legacy")} className={viewState === "legacy" ? "" : "secondary"}>Legacy View</button>
-          </div>
-          {viewState === "dashboard" ? (
-            <PersonalModeDashboard />
-          ) : (
-            <Workspace auth={auth} onLogout={handleLogout} />
-          )}
+          <button type="button" className="session-logout secondary" onClick={handleLogout}>
+            로그아웃
+          </button>
+          <PersonalModeDashboard />
         </>
       ) : (
-        <form className="panel" onSubmit={submitPairing}>
+        <form className="panel pairing-panel" onSubmit={submitPairing}>
           <p className="status">Pair this browser with the Local Runtime.</p>
-          <label>Pairing code<input value={code} onChange={(e) => setCode(e.target.value)} placeholder="1234-5678" required /></label>
-          <label>Device name<input value={deviceName} onChange={(e) => setDeviceName(e.target.value)} required /></label>
+          <label>
+            Pairing code
+            <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="1234-5678" required />
+          </label>
+          <label>
+            Device name
+            <input value={deviceName} onChange={(event) => setDeviceName(event.target.value)} required />
+          </label>
           {error && <p className="error" role="alert">{error}</p>}
           <button type="submit">Pair Web UI</button>
         </form>
