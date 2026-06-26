@@ -36,11 +36,13 @@ import {
   listToolCalls,
   listWorkerRuns,
   openProjectInFileManager,
+  readArtifact,
   removeProject,
   startAgentRun,
   updateProject,
 } from "../../api/client";
 import { ActionMenu, ConfirmDialog, TextInputDialog } from "../ui/AppPrimitives";
+import "./inspector-review.css";
 
 type FeedItem =
   | { kind: "message"; time: number; item: MessageDto }
@@ -48,6 +50,23 @@ type FeedItem =
   | { kind: "tool"; time: number; item: ToolCallDto };
 
 type ProjectLight = "green" | "yellow" | "red" | "gray";
+type InspectorMode = "overview" | "review";
+type DiffLineKind = "add" | "remove" | "context" | "meta";
+
+type DiffLine = {
+  kind: DiffLineKind;
+  oldLine: number | null;
+  newLine: number | null;
+  text: string;
+};
+
+type DiffFile = {
+  id: string;
+  path: string;
+  additions: number;
+  deletions: number;
+  lines: DiffLine[];
+};
 
 const PIN_STORAGE_KEY = "aidp.pinnedProjectIds";
 const THREAD_PIN_STORAGE_KEY = "aidp.pinnedConversationIds";
@@ -75,6 +94,17 @@ function shortId(id?: string | null) {
 function formatDate(value?: string | null) {
   if (!value) return "unknown";
   return new Date(value).toLocaleString();
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function artifactName(artifact: ArtifactRefDto) {
+  const parts = artifact.storage_path.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? artifact.kind;
 }
 
 function statusClass(status?: string | null) {
@@ -145,6 +175,84 @@ function primaryRepository(repositories: ProjectRepositoryDto[]) {
   return repositories.find((item) => item.repository_role === "primary") ?? repositories[0];
 }
 
+function diffPathFromHeader(line: string) {
+  const match = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
+  return match?.[2] ?? line.replace(/^diff --git\s+/, "");
+}
+
+function parseUnifiedDiff(diffText?: string | null): DiffFile[] {
+  if (!diffText?.trim()) return [];
+
+  const files: DiffFile[] = [];
+  let current: DiffFile | null = null;
+  let oldLine = 0;
+  let newLine = 0;
+
+  function pushLine(line: DiffLine) {
+    if (!current) {
+      current = {
+        id: "unified-diff",
+        path: "Unified diff",
+        additions: 0,
+        deletions: 0,
+        lines: [],
+      };
+      files.push(current);
+    }
+    current.lines.push(line);
+  }
+
+  for (const rawLine of diffText.split("\n")) {
+    if (rawLine.startsWith("diff --git ")) {
+      const path = diffPathFromHeader(rawLine);
+      current = { id: `${files.length}-${path}`, path, additions: 0, deletions: 0, lines: [] };
+      files.push(current);
+      pushLine({ kind: "meta", oldLine: null, newLine: null, text: rawLine });
+      continue;
+    }
+
+    if (rawLine.startsWith("@@")) {
+      const hunk = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine);
+      if (hunk) {
+        oldLine = Number(hunk[1]);
+        newLine = Number(hunk[2]);
+      }
+      pushLine({ kind: "meta", oldLine: null, newLine: null, text: rawLine });
+      continue;
+    }
+
+    if (rawLine.startsWith("+++") || rawLine.startsWith("---") || rawLine.startsWith("index ")) {
+      pushLine({ kind: "meta", oldLine: null, newLine: null, text: rawLine });
+      continue;
+    }
+
+    if (rawLine.startsWith("+")) {
+      if (current) current.additions += 1;
+      pushLine({ kind: "add", oldLine: null, newLine, text: rawLine });
+      newLine += 1;
+      continue;
+    }
+
+    if (rawLine.startsWith("-")) {
+      if (current) current.deletions += 1;
+      pushLine({ kind: "remove", oldLine, newLine: null, text: rawLine });
+      oldLine += 1;
+      continue;
+    }
+
+    if (rawLine.startsWith(" ")) {
+      pushLine({ kind: "context", oldLine, newLine, text: rawLine });
+      oldLine += 1;
+      newLine += 1;
+      continue;
+    }
+
+    pushLine({ kind: "meta", oldLine: null, newLine: null, text: rawLine });
+  }
+
+  return files.filter((file) => file.lines.length > 0);
+}
+
 export function PersonalModeDashboard() {
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -170,7 +278,12 @@ export function PersonalModeDashboard() {
   const [agentRunSteps, setAgentRunSteps] = useState<AgentRunStepDto[]>([]);
   const [toolCalls, setToolCalls] = useState<ToolCallDto[]>([]);
 
-  const [activeInspectorTab, setActiveInspectorTab] = useState<"tasks" | "review" | "files" | "details">("tasks");
+  const [activeInspectorMode, setActiveInspectorMode] = useState<InspectorMode>("overview");
+  const [expandedDiffFileIds, setExpandedDiffFileIds] = useState<string[]>([]);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [artifactText, setArtifactText] = useState<string | null>(null);
+  const [artifactError, setArtifactError] = useState<string | null>(null);
+  const [artifactLoading, setArtifactLoading] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [renameProject, setRenameProject] = useState<ProjectDto | null>(null);
   const [removeProjectTarget, setRemoveProjectTarget] = useState<ProjectDto | null>(null);
@@ -277,6 +390,7 @@ export function PersonalModeDashboard() {
       setArtifacts([]);
       setWorktree(null);
       setDiff(null);
+      setSelectedArtifactId(null);
       return;
     }
 
@@ -338,6 +452,14 @@ export function PersonalModeDashboard() {
   const selectedAttempt = attempts.find((item) => item.id === selectedAttemptId);
   const latestWorkerRun = workerRuns.at(-1);
   const selectedRepository = primaryRepository(repositories);
+  const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+  const diffFiles = useMemo(() => parseUnifiedDiff(diff?.diff), [diff?.diff]);
+  const totalAdditions = diffFiles.reduce((sum, file) => sum + file.additions, 0);
+  const totalDeletions = diffFiles.reduce((sum, file) => sum + file.deletions, 0);
+
+  useEffect(() => {
+    setExpandedDiffFileIds(diffFiles.map((file) => file.id));
+  }, [diffFiles.map((file) => file.id).join("|")]);
 
   const sortedProjects = useMemo(() => {
     return [...projects].sort((a, b) => {
@@ -404,6 +526,37 @@ export function PersonalModeDashboard() {
     if (repositories.some((repository) => repository.is_dirty)) return "yellow";
     if (repositories.length === 0) return "gray";
     return "green";
+  }
+
+  function toggleDiffFile(fileId: string) {
+    setExpandedDiffFileIds((current) =>
+      current.includes(fileId) ? current.filter((id) => id !== fileId) : [...current, fileId],
+    );
+  }
+
+  function collapseAllDiffFiles() {
+    setExpandedDiffFileIds([]);
+  }
+
+  function expandAllDiffFiles() {
+    setExpandedDiffFileIds(diffFiles.map((file) => file.id));
+  }
+
+  async function openArtifactPanel(artifact: ArtifactRefDto) {
+    setSelectedArtifactId(artifact.id);
+    setArtifactText(null);
+    setArtifactError(null);
+    setArtifactLoading(true);
+    setIsInspectorOpen(true);
+    setActiveInspectorMode("overview");
+    try {
+      const result = await readArtifact(artifact.id);
+      setArtifactText(result.text);
+    } catch (error) {
+      setArtifactError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setArtifactLoading(false);
+    }
   }
 
   async function handleGeneralChat() {
@@ -559,6 +712,31 @@ export function PersonalModeDashboard() {
     );
   }
 
+  function renderArtifactPanel() {
+    if (!selectedArtifact) return null;
+    return (
+      <section className="artifact-inspector-panel">
+        <header className="artifact-inspector-header">
+          <button type="button" className="secondary compact-button" onClick={() => setSelectedArtifactId(null)}>
+            ← Overview
+          </button>
+          <div>
+            <h3>{artifactName(selectedArtifact)}</h3>
+            <p>{selectedArtifact.kind} · {formatBytes(selectedArtifact.size_bytes)} · {selectedArtifact.content_type}</p>
+          </div>
+        </header>
+        <div className="artifact-meta-grid">
+          <span>ID</span><code>{selectedArtifact.id}</code>
+          <span>Created</span><small>{formatDate(selectedArtifact.created_at)}</small>
+          <span>Checksum</span><code>{shortId(selectedArtifact.checksum)}</code>
+        </div>
+        {artifactLoading && <p className="empty-state">Artifact를 불러오는 중...</p>}
+        {artifactError && <p className="error-inline">Artifact를 읽지 못했습니다: {artifactError}</p>}
+        {artifactText !== null && <pre className="artifact-text-view">{artifactText}</pre>}
+      </section>
+    );
+  }
+
   return (
     <div className={isInspectorOpen ? "codex-layout" : "codex-layout inspector-collapsed"}>
       <aside className="codex-sidebar">
@@ -648,38 +826,60 @@ export function PersonalModeDashboard() {
         <section className="chat-feed">
           {isLoadingConversations ? (
             <p className="empty-state">대화를 불러오는 중...</p>
-          ) : feedItems.length > 0 ? (
-            feedItems.map((feedItem) => {
-              if (feedItem.kind === "message") {
-                const message = feedItem.item;
+          ) : feedItems.length > 0 || artifacts.length > 0 ? (
+            <>
+              {feedItems.map((feedItem) => {
+                if (feedItem.kind === "message") {
+                  const message = feedItem.item;
+                  return (
+                    <article key={`message-${message.id}`} className={message.role === "user" ? "chat-bubble user" : "chat-bubble assistant"}>
+                      <div className="bubble-label">{message.role === "user" ? "사용자" : "Owner"}</div>
+                      <pre>{message.content}</pre>
+                    </article>
+                  );
+                }
+
+                if (feedItem.kind === "step") {
+                  const step = feedItem.item;
+                  return (
+                    <article key={`step-${step.id}`} className="event-card step">
+                      <strong>Owner 작업</strong>
+                      <span className={statusClass(step.status)}>{statusLabel(step.status)}</span>
+                      <p>{step.summary ?? step.step_type}</p>
+                    </article>
+                  );
+                }
+
+                const tool = feedItem.item;
                 return (
-                  <article key={`message-${message.id}`} className={message.role === "user" ? "chat-bubble user" : "chat-bubble assistant"}>
-                    <div className="bubble-label">{message.role === "user" ? "사용자" : "Owner"}</div>
-                    <pre>{message.content}</pre>
+                  <article key={`tool-${tool.id}`} className="event-card tool">
+                    <strong>Owner가 도구를 사용했습니다</strong>
+                    <span className={statusClass(tool.status)}>{statusLabel(tool.status)}</span>
+                    <p>{tool.tool_name}</p>
                   </article>
                 );
-              }
-
-              if (feedItem.kind === "step") {
-                const step = feedItem.item;
-                return (
-                  <article key={`step-${step.id}`} className="event-card step">
-                    <strong>Owner 작업</strong>
-                    <span className={statusClass(step.status)}>{statusLabel(step.status)}</span>
-                    <p>{step.summary ?? step.step_type}</p>
-                  </article>
-                );
-              }
-
-              const tool = feedItem.item;
-              return (
-                <article key={`tool-${tool.id}`} className="event-card tool">
-                  <strong>Owner가 도구를 사용했습니다</strong>
-                  <span className={statusClass(tool.status)}>{statusLabel(tool.status)}</span>
-                  <p>{tool.tool_name}</p>
+              })}
+              {artifacts.length > 0 && (
+                <article className="chat-bubble assistant artifact-feed-card">
+                  <div className="bubble-label">Artifacts</div>
+                  <p>현재 Attempt에서 생성된 파일입니다. 클릭하면 오른쪽에서 내용을 확인할 수 있습니다.</p>
+                  <div className="artifact-chip-list">
+                    {artifacts.map((artifact) => (
+                      <button
+                        type="button"
+                        key={artifact.id}
+                        className={artifact.id === selectedArtifactId ? "artifact-chip active" : "artifact-chip"}
+                        onClick={() => void openArtifactPanel(artifact)}
+                      >
+                        <span>{artifact.kind}</span>
+                        <strong>{artifactName(artifact)}</strong>
+                        <small>{formatBytes(artifact.size_bytes)}</small>
+                      </button>
+                    ))}
+                  </div>
                 </article>
-              );
-            })
+              )}
+            </>
           ) : (
             <div className="chat-empty">
               <h2>Owner에게 작업을 요청하세요</h2>
@@ -708,99 +908,45 @@ export function PersonalModeDashboard() {
       </main>
 
       {isInspectorOpen && (
-        <aside className="codex-review">
-          <header className="review-topbar">
-            <button type="button" className={activeInspectorTab === "tasks" ? "tab-button active" : "tab-button"} onClick={() => setActiveInspectorTab("tasks")}>Task</button>
-            <button type="button" className={activeInspectorTab === "review" ? "tab-button active" : "tab-button"} onClick={() => setActiveInspectorTab("review")}>Review</button>
-            <button type="button" className={activeInspectorTab === "files" ? "tab-button active" : "tab-button"} onClick={() => setActiveInspectorTab("files")}>Files</button>
-            <button type="button" className={activeInspectorTab === "details" ? "tab-button active" : "tab-button"} onClick={() => setActiveInspectorTab("details")}>Details</button>
+        <aside className="codex-review antigravity-review-shell">
+          <header className="review-topbar antigravity-review-topbar">
+            <button type="button" className={activeInspectorMode === "overview" ? "tab-button active" : "tab-button"} onClick={() => setActiveInspectorMode("overview")}>Overview</button>
+            <button type="button" className={activeInspectorMode === "review" ? "tab-button active" : "tab-button"} onClick={() => setActiveInspectorMode("review")}>Review</button>
             <button type="button" className="panel-toggle" onClick={() => setIsInspectorOpen(false)}>숨기기</button>
           </header>
 
-          {activeInspectorTab === "tasks" && (
-            <section className="review-panel">
-              <h3>프로젝트 Task 대기 목록</h3>
-              {tasks.length > 0 ? (
-                <div className="status-stack">
-                  {tasks.map((task) => (
-                    <button
-                      type="button"
-                      key={task.id}
-                      className={task.id === selectedTaskId ? "task-row active" : "task-row"}
-                      onClick={() => setSelectedTaskId(task.id)}
-                    >
-                      <strong>{task.title}</strong>
-                      <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty-state">대기 중인 Task가 없습니다.</p>
-              )}
-            </section>
-          )}
-
-          {activeInspectorTab === "review" && (
-            <section className="review-panel">
-              <h3>승인 대기</h3>
-              {visibleApprovals.length > 0 ? (
-                visibleApprovals.map((approval) => (
-                  <article key={approval.id} className="review-card">
-                    <strong>{approval.title}</strong>
-                    <p>{approval.description ?? approval.action_type}</p>
-                    <span className={statusClass(approval.status)}>{statusLabel(approval.status)}</span>
-                    <span className="status-pill">{approval.risk_level}</span>
-                  </article>
-                ))
-              ) : (
-                <div className="empty-review">
-                  <h2>승인 대기 중인 작업 없음</h2>
-                  <p>Worker 결과 검토 요청이 여기에 표시됩니다.</p>
-                </div>
-              )}
-            </section>
-          )}
-
-          {activeInspectorTab === "files" && (
-            <section className="review-panel">
-              <h3>변경 사항 / 첨부 파일</h3>
-              {diff ? <pre className="diff-view">{diff.diff}</pre> : <p className="empty-state">표시할 diff가 없습니다.</p>}
-              {artifacts.length > 0 ? (
-                <ul className="artifact-list">
-                  {artifacts.map((artifact) => (
-                    <li key={artifact.id}>
-                      <strong>{artifact.kind}</strong>
-                      <small>{Math.ceil(artifact.size_bytes / 1024)} KB · {artifact.content_type}</small>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="empty-state">첨부 파일이 없습니다.</p>
-              )}
-            </section>
-          )}
-
-          {activeInspectorTab === "details" && (
-            <section className="review-panel">
-              <h3>세부정보</h3>
-              <div className="status-stack">
-                {selectedTask && (
-                  <article className="status-card">
-                    <span>Task</span>
-                    <strong>{selectedTask.title}</strong>
-                    <span className={statusClass(selectedTask.status)}>{statusLabel(selectedTask.status)}</span>
-                    <p>{selectedTask.instructions}</p>
-                    <code>{selectedTask.id}</code>
-                  </article>
-                )}
-                {selectedAttempt && (
-                  <article className="status-card">
-                    <span>Attempt #{selectedAttempt.attempt_number}</span>
-                    <strong>{shortId(selectedAttempt.id)}</strong>
-                    <span className={statusClass(selectedAttempt.status)}>{statusLabel(selectedAttempt.status)}</span>
-                    {selectedAttempt.result_summary && <p>{selectedAttempt.result_summary}</p>}
-                  </article>
-                )}
+          {selectedArtifact ? renderArtifactPanel() : activeInspectorMode === "overview" ? (
+            <section className="review-panel overview-inspector-panel">
+              <header className="review-changes-titlebar">
+                <h3>Overview</h3>
+                <span className={statusClass(selectedAttempt?.status)}>{statusLabel(selectedAttempt?.status)}</span>
+              </header>
+              <div className="overview-grid">
+                <article className="status-card">
+                  <span>Task</span>
+                  {selectedTask ? (
+                    <>
+                      <strong>{selectedTask.title}</strong>
+                      <span className={statusClass(selectedTask.status)}>{statusLabel(selectedTask.status)}</span>
+                      <p>{selectedTask.instructions}</p>
+                    </>
+                  ) : (
+                    <p className="empty-state">선택된 Task가 없습니다.</p>
+                  )}
+                </article>
+                <article className="status-card">
+                  <span>Attempt</span>
+                  {selectedAttempt ? (
+                    <>
+                      <strong>Attempt #{selectedAttempt.attempt_number}</strong>
+                      <span className={statusClass(selectedAttempt.status)}>{statusLabel(selectedAttempt.status)}</span>
+                      {selectedAttempt.result_summary && <p>{selectedAttempt.result_summary}</p>}
+                      <code>{selectedAttempt.id}</code>
+                    </>
+                  ) : (
+                    <p className="empty-state">선택된 Attempt가 없습니다.</p>
+                  )}
+                </article>
                 {latestWorkerRun && (
                   <article className="status-card">
                     <span>WorkerRun</span>
@@ -826,6 +972,21 @@ export function PersonalModeDashboard() {
                   </article>
                 )}
                 <article className="status-card">
+                  <span>Artifacts</span>
+                  {artifacts.length > 0 ? (
+                    <div className="artifact-mini-list">
+                      {artifacts.map((artifact) => (
+                        <button type="button" key={artifact.id} className="artifact-mini-row" onClick={() => void openArtifactPanel(artifact)}>
+                          <strong>{artifact.kind}</strong>
+                          <small>{artifactName(artifact)} · {formatBytes(artifact.size_bytes)}</small>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="empty-state">생성된 artifact가 없습니다.</p>
+                  )}
+                </article>
+                <article className="status-card">
                   <span>AgentRun</span>
                   <select value={selectedAgentRunId || ""} onChange={(event) => setSelectedAgentRunId(event.target.value || null)}>
                     <option value="">실행 선택</option>
@@ -834,6 +995,14 @@ export function PersonalModeDashboard() {
                     ))}
                   </select>
                 </article>
+                {visibleApprovals.length > 0 && (
+                  <article className="status-card">
+                    <span>Approval Requests</span>
+                    {visibleApprovals.map((approval) => (
+                      <p key={approval.id}>{approval.title} · {statusLabel(approval.status)}</p>
+                    ))}
+                  </article>
+                )}
                 {toolCalls.length > 0 && (
                   <article className="status-card">
                     <span>Raw Tool Calls</span>
@@ -846,6 +1015,62 @@ export function PersonalModeDashboard() {
                   <small>Updated {formatDate(selectedConversation?.updated_at)}</small>
                 </article>
               </div>
+            </section>
+          ) : (
+            <section className="review-panel review-changes-panel">
+              <header className="review-changes-titlebar">
+                <div>
+                  <h3>Review Changes</h3>
+                  <p>{selectedTask?.title ?? "선택된 Task 없음"}</p>
+                </div>
+                <div className="review-actions">
+                  <button type="button" className="review-icon-button" title="전체 펼치기" onClick={expandAllDiffFiles}>▦</button>
+                  <button type="button" className="review-icon-button" title="전체 접기" onClick={collapseAllDiffFiles}>⌃</button>
+                  <button type="button" className="review-icon-button" title="검색은 다음 PR에서 연결">⌕</button>
+                </div>
+              </header>
+
+              <div className="review-change-summary">
+                <span>{diffFiles.length} files changed</span>
+                <strong className="diff-addition">+{totalAdditions}</strong>
+                <strong className="diff-deletion">-{totalDeletions}</strong>
+                {diff?.truncated && <span className="status-pill danger">truncated</span>}
+              </div>
+
+              {diffFiles.length > 0 ? (
+                <div className="changed-file-list">
+                  {diffFiles.map((file) => {
+                    const expanded = expandedDiffFileIds.includes(file.id);
+                    return (
+                      <article key={file.id} className="changed-file-card">
+                        <button type="button" className="changed-file-header" onClick={() => toggleDiffFile(file.id)}>
+                          <span className="file-icon">◆</span>
+                          <strong>{file.path}</strong>
+                          <span className="diff-addition">+{file.additions}</span>
+                          <span className="diff-deletion">-{file.deletions}</span>
+                          <span>{expanded ? "⌄" : "›"}</span>
+                        </button>
+                        {expanded && (
+                          <div className="diff-line-table">
+                            {file.lines.map((line, index) => (
+                              <div key={`${file.id}-${index}`} className={`diff-line ${line.kind}`}>
+                                <span className="diff-line-no">{line.oldLine ?? ""}</span>
+                                <span className="diff-line-no">{line.newLine ?? ""}</span>
+                                <code>{line.text}</code>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-review">
+                  <h2>표시할 코드 변경이 없습니다</h2>
+                  <p>Worker가 result commit을 만들거나 worktree diff가 생기면 여기에 파일별 변경 내용이 표시됩니다.</p>
+                </div>
+              )}
             </section>
           )}
         </aside>
