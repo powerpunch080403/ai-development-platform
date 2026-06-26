@@ -6,8 +6,9 @@ import "./app-primitives.css";
 
 export type ActionMenuItem = {
   label: string;
-  onSelect: () => void;
+  onSelect?: () => void;
   destructive?: boolean;
+  children?: ActionMenuItem[];
 };
 
 type DialogActionResult = void | Promise<void> | null;
@@ -16,6 +17,34 @@ type ActionMenuProps = {
   ariaLabel: string;
   items: ActionMenuItem[];
 };
+
+function renderMenuItem(item: ActionMenuItem) {
+  if (item.children?.length) {
+    return (
+      <DropdownMenu.Sub key={item.label}>
+        <DropdownMenu.SubTrigger className="app-dropdown-item app-dropdown-subtrigger">
+          <span>{item.label}</span>
+          <span className="app-dropdown-caret">›</span>
+        </DropdownMenu.SubTrigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.SubContent className="app-dropdown-content" sideOffset={6} alignOffset={-6}>
+            {item.children.map(renderMenuItem)}
+          </DropdownMenu.SubContent>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Sub>
+    );
+  }
+
+  return (
+    <DropdownMenu.Item
+      key={item.label}
+      className={item.destructive ? "app-dropdown-item danger-action" : "app-dropdown-item"}
+      onSelect={item.onSelect}
+    >
+      {item.label}
+    </DropdownMenu.Item>
+  );
+}
 
 export function ActionMenu({ ariaLabel, items }: ActionMenuProps) {
   return (
@@ -27,15 +56,7 @@ export function ActionMenu({ ariaLabel, items }: ActionMenuProps) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="app-dropdown-content" sideOffset={6} align="end">
-          {items.map((item) => (
-            <DropdownMenu.Item
-              key={item.label}
-              className={item.destructive ? "app-dropdown-item danger-action" : "app-dropdown-item"}
-              onSelect={item.onSelect}
-            >
-              {item.label}
-            </DropdownMenu.Item>
-          ))}
+          {items.map(renderMenuItem)}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

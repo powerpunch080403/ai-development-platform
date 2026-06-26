@@ -114,10 +114,20 @@ def test_codex_cli_provider_skeleton_basic(app_harness: AppHarness) -> None:
         json={}  # should default to codex_cli
     )
     assert start_resp.status_code == 200
-    assert start_resp.json()["status"] == "completed"
+    assert start_resp.json()["status"] == "failed"
+    assert start_resp.json()["error_code"] == "owner_provider_not_connected"
 
     with app_harness.session_factory() as session:
         from aidp_server.db.models import AuditEvent
+
+        run = session.get(AgentRun, run_id)
+        assert run is not None
+        assert run.status.value == "failed"
+        assert run.started_at is not None
+        assert run.failed_at is not None
+        assert run.completed_at is None
+        assert run.error_code == "owner_provider_not_connected"
+
         audit = session.scalar(
             select(AuditEvent).where(
                 AuditEvent.event_type == "owner_runtime.skeleton_invoked",
@@ -161,6 +171,15 @@ def test_codex_cli_provider_bridge_spike_safe_invocation(app_harness: AppHarness
 
     with app_harness.session_factory() as session:
         from aidp_server.db.models import AuditEvent
+
+        run = session.get(AgentRun, run_id)
+        assert run is not None
+        assert run.status.value == "completed"
+        assert run.started_at is not None
+        assert run.completed_at is not None
+        assert run.failed_at is None
+        assert run.error_code is None
+
         audit = session.scalar(
             select(AuditEvent).where(
                 AuditEvent.event_type == "owner_runtime.bridge_spike_invoked",

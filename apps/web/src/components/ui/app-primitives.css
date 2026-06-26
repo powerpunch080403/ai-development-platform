@@ -37,7 +37,17 @@
   cursor: pointer;
 }
 
-.app-dropdown-item[data-highlighted] {
+.app-dropdown-subtrigger {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.app-dropdown-caret {
+  color: #71717a;
+}
+
+.app-dropdown-item[data-highlighted],
+.app-dropdown-subtrigger[data-state="open"] {
   background: #f4f4f5;
 }
 

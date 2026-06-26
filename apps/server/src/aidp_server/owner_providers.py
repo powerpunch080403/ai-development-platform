@@ -19,11 +19,13 @@ class CodexCliOwnerProvider(OwnerRuntimeProvider):
 
     def start_agent_run(self, session: Session, run: AgentRun) -> None:
         if not self.settings.allow_real_codex_owner_provider:
-            # MVP Skeleton: Record invocation but do not actually execute Codex CLI loop yet.
+            # MVP Skeleton: Record invocation but do not present it as a successful Owner run.
             now = datetime.now(timezone.utc)
-            run.status = AgentRunStatus.COMPLETED
+            run.status = AgentRunStatus.FAILED
             run.started_at = now
-            run.completed_at = now
+            run.failed_at = now
+            run.error_code = "owner_provider_not_connected"
+            run.error_message = "Owner runtime is not connected yet. Codex CLI Owner bridge is disabled by config."
 
             record_audit_event(
                 session,

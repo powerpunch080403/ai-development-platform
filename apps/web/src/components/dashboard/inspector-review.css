@@ -1,0 +1,353 @@
+.antigravity-review-shell {
+  background: #ffffff;
+  color: #27272a;
+}
+
+.antigravity-review-shell .review-topbar,
+.antigravity-review-topbar {
+  min-height: 48px;
+  border-bottom-color: #e4e4e7;
+  background: #ffffff;
+}
+
+.antigravity-review-shell .tab-button {
+  color: #52525b;
+  background: transparent;
+  border-color: transparent;
+}
+
+.antigravity-review-shell .tab-button.active,
+.antigravity-review-shell .tab-button:hover:not(:disabled) {
+  color: #18181b;
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+}
+
+.antigravity-review-shell .panel-toggle {
+  color: #52525b;
+  background: #ffffff;
+  border-color: #d4d4d8;
+}
+
+.antigravity-review-shell .review-panel {
+  background: #ffffff;
+  color: #27272a;
+  padding: 0;
+}
+
+.overview-inspector-panel,
+.review-changes-panel,
+.artifact-inspector-panel {
+  overflow: auto;
+}
+
+.review-changes-titlebar,
+.artifact-inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e4e4e7;
+  background: #ffffff;
+}
+
+.review-changes-titlebar h3,
+.artifact-inspector-header h3 {
+  margin: 0;
+  color: #18181b;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.review-changes-titlebar p,
+.artifact-inspector-header p {
+  margin: 2px 0 0;
+  color: #71717a;
+  font-size: 12px;
+}
+
+.review-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.review-icon-button {
+  min-height: 30px;
+  width: 30px;
+  padding: 0;
+  border: 0;
+  color: #71717a;
+  background: transparent;
+}
+
+.review-icon-button:hover:not(:disabled) {
+  color: #18181b;
+  background: #f4f4f5;
+}
+
+.review-change-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e4e4e7;
+  color: #71717a;
+  background: #fafafa;
+  font-size: 13px;
+}
+
+.diff-addition {
+  color: #15803d;
+}
+
+.diff-deletion {
+  color: #b91c1c;
+}
+
+.changed-file-list {
+  display: grid;
+  gap: 0;
+}
+
+.changed-file-card {
+  border-bottom: 1px solid #e4e4e7;
+  background: #ffffff;
+}
+
+.changed-file-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  color: #27272a;
+  background: #fafafa;
+  text-align: left;
+}
+
+.changed-file-header:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.changed-file-header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.file-icon {
+  color: #2563eb;
+  font-size: 11px;
+}
+
+.diff-line-table {
+  display: grid;
+  overflow-x: auto;
+  background: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 42px 42px minmax(0, 1fr);
+  min-width: 640px;
+}
+
+.diff-line.meta {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.diff-line.add {
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.diff-line.remove {
+  color: #991b1b;
+  background: #fef2f2;
+}
+
+.diff-line.context {
+  color: #3f3f46;
+  background: #ffffff;
+}
+
+.diff-line-no {
+  padding: 2px 7px;
+  color: #a1a1aa;
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid #e4e4e7;
+  background: #fafafa;
+}
+
+.diff-line code {
+  padding: 2px 10px;
+  color: inherit;
+  white-space: pre;
+}
+
+.overview-grid {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.overview-inspector-panel .grant-card {
+  display: none;
+}
+
+.antigravity-review-shell .status-card,
+.antigravity-review-shell .grant-card {
+  border-color: #e4e4e7;
+  background: #fafafa;
+  color: #27272a;
+}
+
+.antigravity-review-shell .status-card > span:first-child,
+.antigravity-review-shell .grant-card small {
+  color: #71717a;
+}
+
+.antigravity-review-shell .status-card p,
+.antigravity-review-shell .grant-card p {
+  color: #52525b;
+}
+
+.artifact-feed-card p {
+  margin: 0;
+  color: #52525b;
+}
+
+.artifact-chip-list,
+.artifact-mini-list {
+  display: grid;
+  gap: 7px;
+}
+
+.artifact-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #e4e4e7;
+  color: #27272a;
+  background: #ffffff;
+  text-align: left;
+}
+
+.artifact-chip:hover:not(:disabled),
+.artifact-chip.active {
+  background: #f4f4f5;
+  border-color: #a1a1aa;
+}
+
+.artifact-chip span,
+.artifact-chip small {
+  color: #71717a;
+  font-size: 12px;
+}
+
+.artifact-chip strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-mini-row {
+  display: grid;
+  gap: 3px;
+  justify-content: stretch;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-color: #e4e4e7;
+  color: #27272a;
+  background: #ffffff;
+  text-align: left;
+}
+
+.artifact-mini-row:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.artifact-mini-row small {
+  color: #71717a;
+}
+
+.artifact-inspector-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding-bottom: 12px;
+  background: #ffffff;
+}
+
+.artifact-inspector-header {
+  justify-content: flex-start;
+}
+
+.compact-button {
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
+.artifact-meta-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0 12px;
+  padding: 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.artifact-meta-grid span {
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.artifact-meta-grid code,
+.artifact-meta-grid small {
+  min-width: 0;
+  color: #27272a;
+  overflow-wrap: anywhere;
+}
+
+.artifact-text-view {
+  margin: 0 12px;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  color: #27272a;
+  background: #fafafa;
+}
+
+.antigravity-review-shell .empty-review {
+  color: #71717a;
+}
+
+.antigravity-review-shell .empty-review h2 {
+  color: #27272a;
+}
