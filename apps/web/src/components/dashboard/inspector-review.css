@@ -206,6 +206,10 @@
   background: #ffffff;
 }
 
+.overview-inspector-panel .grant-card {
+  display: none;
+}
+
 .antigravity-review-shell .status-card,
 .antigravity-review-shell .grant-card {
   border-color: #e4e4e7;
